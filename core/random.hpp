@@ -37,7 +37,7 @@ public:
     }
 
     template<int Size>
-    static constexpr void random_penalty(std::array<float, Size>& out, int32_t x, int32_t y,
+    static inline void random_penalty(std::array<float, Size>& out, int32_t x, int32_t y,
         float source, float amplitude = 1.f, uint32_t seed = 1
     ) {
         if (source <= 0) return;
@@ -59,10 +59,27 @@ public:
      * },
      */
     template<int Size>
-    static constexpr void random_penalty_between(std::array<float, Size>& out, int32_t x, int32_t y,
+    static inline void random_penalty_between(
+        std::array<float, Size>& out, int32_t x, int32_t y,
         float from, float to, uint32_t seed
     ) {
         random_penalty<Size>(out, x, y, to, to - from, seed);
+    }
+
+    /**
+     * {
+     *   type = "noise-function",
+     *   name = "random_penalty_at",
+     *   parameters = {"value", "seed"},
+     *   expression = "random_penalty{x = x, y = y, seed = seed, source = value, amplitude = value}"
+     * },
+     */
+    template<int Size>
+    static inline void random_penalty_at(
+        std::array<float, Size>& out, int32_t x, int32_t y,
+        float value, uint32_t seed
+    ) {
+        random_penalty<Size>(out, x, y, value, value, seed);
     }
 
 private:

@@ -22,4 +22,4 @@ target_include_directories(core PUBLIC ./)
 
 target_link_libraries(core PUBLIC warnings_interface argparse)
 
-set_property(TARGET core PROPERTY CXX_STANDARD 26)
+set_property(TARGET core PROPERTY CXX_STANDARD 23)

@@ -12,7 +12,7 @@ void benchmark(int n) {
     for (int i = 0; i < n; i++) {
         for (float x = 0; x < 1000.f; x++) {
             for (float y = 0; y < 1000.f; y++) {
-                sum += noise.noise(22, x, y, 0.01, 10, 300, 200);
+                sum += noise.noise(22, x, y, 0.01f, 10.f, 300.f, 200.f);
             }
         }
     }
@@ -29,8 +29,8 @@ void benchmark_2(int n) {
         settings.richness[t] = 6.f;
     }
     auto start = std::chrono::high_resolution_clock::now();
-    NoisePrecompute* precompute = new NoisePrecompute(settings);
-    NoiseCache* cache = new NoiseCache;
+    NoisePrecompute precompute(settings);
+    NoiseCache cache;
     auto end = std::chrono::high_resolution_clock::now();
     std::println("cache/precompute init {}", std::chrono::duration_cast<std::chrono::milliseconds>(end - start));
 
@@ -38,7 +38,7 @@ void benchmark_2(int n) {
 
     start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < n; i++) {
-        auto patches = regular_patches(*precompute, *cache, i);
+        auto patches = regular_patches(precompute, cache, i);
         for (const auto& patch : patches[1]) {
             sum += patch.radius;
         }
@@ -46,9 +46,6 @@ void benchmark_2(int n) {
     end = std::chrono::high_resolution_clock::now();
 
     std::println("{} {}", sum, std::chrono::duration_cast<std::chrono::milliseconds>(end - start));
-
-    delete precompute;
-    delete cache;
 }
 
 int main() {

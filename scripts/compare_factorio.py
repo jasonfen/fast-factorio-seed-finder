@@ -68,7 +68,7 @@ def main():
                 shutil.rmtree(tmp)
                 return 2
 
-            cpp_out = Path("/home/ness056/CodeProjets/factorio-reverse-engineering/build/patches.ppm")
+            cpp_out = Path("C:\\Users\\louis\\Code Projects\\fast-factorio-seed-finder\\build\\image_generator\\img.png")
             if not cpp_out.exists():
                 print(f"C++ output not found: {cpp_out}")
                 shutil.rmtree(tmp)

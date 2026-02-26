@@ -34,18 +34,22 @@ end
 
 remove_proto({
     ["iron-ore"] = true,
-    ["copper-ore"] = false,
-    ["coal"] = false,
-    ["stone"] = false,
+    ["copper-ore"] = true,
+    ["coal"] = true,
+    ["stone"] = true,
+    ["water"] = false
 })
 
-data.raw["noise-function"]["resource_autoplace_all_patches"].expression = "starter_patches"
+-- data.raw["noise-expression"]["elevation"].expression = "elevation_lakes"
 
-data.raw["noise-function"]["resource_autoplace_all_patches"].local_expressions.starter_patches = "spot_noise{x = x,\z
+data.raw["noise-function"]["resource_autoplace_all_patches"].expression = "starting_patches"
+
+data.raw["noise-function"]["resource_autoplace_all_patches"].local_expressions.starting_patches = "spot_noise{x = x,\z
                                      y = y,\z
-                                     density_expression = 5,\z
-                                     spot_quantity_expression = 2000000,\z
-                                     spot_radius_expression = 30,\z
+                                     density_expression = starting_amount / (pi * starting_resource_placement_radius * starting_resource_placement_radius) * \z
+                                                          starting_modulation,\z
+                                     spot_quantity_expression = starting_area_spot_quantity,\z
+                                     spot_radius_expression = starting_rq_factor * starting_area_spot_quantity ^ (1/3),\z
                                      spot_favorability_expression = clamp((elevation_lakes - 1) / 10, 0, 1) * starting_modulation * 2 - \z
                                                                     distance / starting_resource_placement_radius + random_penalty_at(0.5, 1),\z
                                      seed0 = map_seed,\z
@@ -58,6 +62,7 @@ data.raw["noise-function"]["resource_autoplace_all_patches"].local_expressions.s
                                      hard_region_target_quantity = 1,\z
                                      basement_value = basement_value,\z
                                      maximum_spot_basement_radius = 128}"
+
 -- data.raw["noise-function"]["resource_autoplace_all_patches"].local_expressions.regular_spot_quantity_expression = "1000000"
 
 -- data.raw["noise-expression"]["elevation"].expression = "\
@@ -78,16 +83,16 @@ data.raw["noise-function"]["resource_autoplace_all_patches"].local_expressions.s
 -- quick_multioctave_noise{\
 --     x = x,\
 --     y = y,\
---     seed0 = 250,\
+--     seed0 = 1000,\
 --     seed1 = 22,\
---     octaves = 4,\
+--     octaves = 2,\
 --     input_scale = 0.16,\
 --     output_scale = 10,\
 --     offset_x = 300,\
 --     offset_y = 200,\
 --     octave_input_scale_multiplier = 0.5,\
 --     octave_output_scale_multiplier = 2,\
---     octave_seed0_shift = 11\
+--     octave_seed0_shift = 1\
 -- } + 5"
 
 

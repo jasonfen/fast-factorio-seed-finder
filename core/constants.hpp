@@ -15,10 +15,10 @@ static constexpr float MAKE_0_12LIKE_LAKES_BIAS = 20.f;
 static constexpr uint32_t TERRAIN_OCTAVES = 8;
 static constexpr uint32_t MAKE_0_12LIKE_LAKES_PERSISTENCE_OCTAVES = TERRAIN_OCTAVES - 2;
 static constexpr float MAKE_0_12LIKE_LAKES_PERSISTENCE_PERSISTENCE = 0.7f;
-static constexpr float MAKE_0_12LIKE_LAKES_PERSISTENCE_OUTPUT_SCALE =
+static const float MAKE_0_12LIKE_LAKES_PERSISTENCE_OUTPUT_SCALE =
     (1.f - MAKE_0_12LIKE_LAKES_PERSISTENCE_PERSISTENCE) /
-    std::exp2(MAKE_0_12LIKE_LAKES_PERSISTENCE_OCTAVES) /
-    (1.f - std::pow(MAKE_0_12LIKE_LAKES_PERSISTENCE_PERSISTENCE, MAKE_0_12LIKE_LAKES_PERSISTENCE_OCTAVES)) *
+    std::exp2f(MAKE_0_12LIKE_LAKES_PERSISTENCE_OCTAVES) /
+    (1.f - std::powf(MAKE_0_12LIKE_LAKES_PERSISTENCE_PERSISTENCE, MAKE_0_12LIKE_LAKES_PERSISTENCE_OCTAVES)) *
     0.5f;
 static constexpr uint32_t MAKE_0_12LIKE_LAKES_OCTAVES_A = TERRAIN_OCTAVES;
 static constexpr uint32_t MAKE_0_12LIKE_LAKES_OCTAVES_B = 6;
@@ -33,9 +33,9 @@ static constexpr int STARTER_LAKE_OCTAVES = 5;
 static constexpr float STARTER_LAKE_OCTAVE_INPUT_SCALE_MULTIPLIER = 0.5f;
 static constexpr float STARTER_LAKE_PERSISTENCE = 0.75f;
 
-static constexpr float STARTER_LAKE_INPUT_SCALE2 =
-    STARTER_LAKE_INPUT_SCALE * std::pow(STARTER_LAKE_OCTAVE_INPUT_SCALE_MULTIPLIER, (STARTER_LAKE_OCTAVES - 1));
-static constexpr float STARTER_LAKE_OUTPUT_SCALE2 = STARTER_LAKE_OUTPUT_SCALE * std::exp2(STARTER_LAKE_OCTAVES - 1);
+static const float STARTER_LAKE_INPUT_SCALE2 =
+    STARTER_LAKE_INPUT_SCALE * std::powf(STARTER_LAKE_OCTAVE_INPUT_SCALE_MULTIPLIER, (STARTER_LAKE_OCTAVES - 1));
+static const float STARTER_LAKE_OUTPUT_SCALE2 = STARTER_LAKE_OUTPUT_SCALE * std::exp2f(STARTER_LAKE_OCTAVES - 1);
 static constexpr float STARTER_LAKE_OCTAVE_INPUT_SCALE_MULTIPLIER2 = 1 / STARTER_LAKE_OCTAVE_INPUT_SCALE_MULTIPLIER;
 
 
@@ -44,10 +44,13 @@ static constexpr std::array<int32_t, NB_PATCH_TYPE> REGION_SIZES{
 };
 static constexpr int32_t MAX_REGION_SIZE = 1024;
 
-static constexpr int32_t SPAN = 6.f;
+static constexpr std::array<int32_t, NB_PATCH_TYPE> SPANS{
+    4, 6
+};
 
 static constexpr std::array<int32_t, NB_PATCH_TYPE> NB_CANDIDATES{
-    32 * SPAN + 3, 22 * SPAN + 1
+    32 * SPANS[STARTER] + 3,
+    22 * SPANS[REGULAR] + 1
 };
 static constexpr int32_t MAX_NB_CANDIDATES = std::max(NB_CANDIDATES[STARTER], NB_CANDIDATES[REGULAR]);
 
@@ -56,8 +59,7 @@ static constexpr std::array<float, NB_PATCH_TYPE> SUGGESTED_DISTANCES{
 };
 
 static constexpr std::array<int32_t, NB_PATCH_TYPE> CHUNK_SIZES{
-    (int32_t)std::ceil(SUGGESTED_DISTANCES[STARTER]),
-    (int32_t)std::ceil(SUGGESTED_DISTANCES[REGULAR]),
+    32, 46
 };
 
 static constexpr std::array<int32_t, NB_PATCH_TYPE> CHUNK_COUNTS{
@@ -69,11 +71,12 @@ static constexpr std::array<uint8_t, NB_PATCH_TYPE> SEEDS1{
     101, 100
 };
 
-static constexpr std::array<std::array<int32_t, NB_RESOURCE_TYPE>, NB_PATCH_TYPE> NB_SPOTS{
-    std::array<int32_t, NB_RESOURCE_TYPE>{ 32, 32, 32, 32 },
-    std::array<int32_t, NB_RESOURCE_TYPE>{ 22, 22, 21, 21 }
+static constexpr std::array<int32_t, NB_RESOURCE_TYPE> REGULAR_NB_SPOTS{
+    22, 22, 21, 21
 };
-constexpr int MAX_NB_SPOTS = 32;
+constexpr uint32_t REGULAR_MAX_NB_SPOTS = 22;
+constexpr uint32_t STARTER_NB_SPOTS = 32;
+constexpr uint32_t MAX_NB_SPOTS = 32;
 
 static constexpr std::array<float, NB_RESOURCE_TYPE> BASE_DENSITIES{
     10, 8, 8, 4
@@ -93,3 +96,4 @@ static constexpr float BASE_SPOTS_PER_KM2 = 2.5f;
 static constexpr float DOUBLE_DENSITY_DISTANCE = 1300.f;
 static constexpr float RANDOM_SPOT_SIZE_MINIMUM = 0.25f;
 static constexpr float RANDOM_SPOT_SIZE_MAXIMUM = 2.f;
+static constexpr float STARTING_PATCHES_SPLIT = 0.5f;

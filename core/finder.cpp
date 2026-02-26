@@ -62,7 +62,7 @@ int Finder::run(std::string program_name, int argc, char* argv[]) {
     std::println("Last seed is {}.", _run_options.first_stage_last_seed);
 
     std::println("Precomputing noise data...");
-    NoisePrecompute* precompute = new NoisePrecompute(_map_gen_settings);
+    NoisePrecompute precompute(_map_gen_settings);
 
     for (size_t stage_idx = 0; stage_idx < _stages.size(); stage_idx++) {
         const auto& stage = _stages[stage_idx];
@@ -80,7 +80,7 @@ int Finder::run(std::string program_name, int argc, char* argv[]) {
             total = ((_run_options.first_stage_last_seed - _run_options.first_stage_first_seed) / 2) * 2;
         } else {
             _previous_top_seeds = std::move(_top_seeds);
-            total = _previous_top_seeds.size();
+            total = (uint32_t)_previous_top_seeds.size();
             if (check_twin_seeds) total *= 2;
         }
 
@@ -92,11 +92,11 @@ int Finder::run(std::string program_name, int argc, char* argv[]) {
             std::thread thread;
             if (stage_idx == 0) {
                 thread = std::thread([&, id, check_twin_seeds] {
-                    worker_first_stage(id, stage, *precompute, check_twin_seeds, progress);
+                    worker_first_stage(id, stage, precompute, check_twin_seeds, progress);
                 });
             } else {
                 thread = std::thread([&, id, check_twin_seeds] {
-                    worker_other_stages(id, stage, *precompute, check_twin_seeds, progress);
+                    worker_other_stages(id, stage, precompute, check_twin_seeds, progress);
                 });
             }
             threads.push_back(std::move(thread));
@@ -151,39 +151,35 @@ void Finder::worker_first_stage(
     const uint32_t first_seed = id * factor + _run_options.first_stage_first_seed;
     const uint32_t seed_span = _run_options.threads * factor;
 
-    NoiseCache* cache = new NoiseCache;
+    NoiseCache cache;
 
     for (uint64_t seed64 = first_seed; seed64 < (uint64_t)_run_options.first_stage_last_seed; seed64 += seed_span) {
         uint32_t seed = (uint32_t)seed64;
-        auto results = stage.first(_map_gen_settings, precompute, *cache, {seed, 0.f});
+        auto results = stage.first(_map_gen_settings, precompute, cache, {seed, 0.f});
         if (!results.eliminate) _top_seeds.insert({seed, results.score});
         progress += factor;
     }
-
-    delete cache;
 }
 
 void Finder::worker_other_stages(
     int, const Stage& stage, const NoisePrecompute& precompute,
     bool check_twin_seeds, std::atomic<uint64_t>& progress
 ) {
-    NoiseCache* cache = new NoiseCache;
+    NoiseCache cache;
 
     while (!_previous_top_seeds.empty()) {
         SeedScorePair pair = _previous_top_seeds.get_pop();
 
-        auto results = stage.first(_map_gen_settings, precompute, *cache, pair);
+        auto results = stage.first(_map_gen_settings, precompute, cache, pair);
         if (!results.eliminate) _top_seeds.insert({pair.first, results.score});
         progress++;
 
         if (check_twin_seeds) {
             pair.first++;
 
-            auto results = stage.first(_map_gen_settings, precompute, *cache, pair);
+            results = stage.first(_map_gen_settings, precompute, cache, pair);
             if (!results.eliminate) _top_seeds.insert({pair.first, results.score});
             progress++;
         }
     }
-
-    delete cache;
 }

@@ -4,4 +4,4 @@ add_executable(benchmark
 
 target_link_libraries(benchmark PRIVATE core)
 
-set_property(TARGET benchmark PROPERTY CXX_STANDARD 26)
+set_property(TARGET benchmark PROPERTY CXX_STANDARD 23)

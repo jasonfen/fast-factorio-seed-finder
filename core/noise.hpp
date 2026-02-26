@@ -8,61 +8,35 @@
 
 class NoisePrecompute {
 public:
-    constexpr NoisePrecompute(const MapGenSettings& settings) {
-        for (int32_t i = 0; i < MAX_REGION_SIZE; i++) {
-            for (int32_t j = 0; j < MAX_REGION_SIZE; j++) {
-                int32_t x = i - (MAX_REGION_SIZE / 2);
-                int32_t y = j - (MAX_REGION_SIZE / 2);
-
-                Random::random_penalty_between<MAX_NB_SPOTS>(
-                    _penalties[i + j*MAX_REGION_SIZE], x, y, RANDOM_SPOT_SIZE_MINIMUM, RANDOM_SPOT_SIZE_MAXIMUM, 1
-                );
-            }
-        }
-
-        for (ResourceType type = IRON; type < NB_RESOURCE_TYPE; type++) {
-            _base_regular_densities[type] = base_regular_density(settings, type);
-            _base_regular_quantities[type] = base_regular_quantity(settings, type);
-        }
-
-        _water_level = 10 * std::log2(settings.water_coverage);
-        _make_0_12like_lakes_input_scale = settings.water_scale / 2;
-        _make_0_12like_lakes_offset_x = 10000.f / settings.water_scale;
+    NoisePrecompute() = delete;
+    NoisePrecompute(const MapGenSettings& settings);
+    ~NoisePrecompute() {
+        delete[] _starter_penalties;
+        delete[] _regular_penalties;
     }
 
-    static constexpr float base_regular_density(const MapGenSettings& settings, const ResourceType type) {
-        /*
-        size_effective_distance_at = if(has_starting_area_placement == -1, distance, distance - regular_patch_fade_in_distance)
+    inline const auto& get_starter_penalties() const { return _starter_penalties; }
+    inline const auto& get_regular_penalties() const { return _regular_penalties; }
 
-        regular_density_at(distance) = "base_density * frequency_multiplier * size_multiplier * \z
-                        if(has_starting_area_placement == -1, 1, clamp((distance - starting_resource_placement_radius) / regular_patch_fade_in_distance, 0, 1)) * \z
-                        (1 + clamp(size_effective_distance_at(distance) / double_density_distance, 0, 1))"
-        */
-
-        return BASE_DENSITIES[type] * settings.frequencies[type] * settings.sizes[type];
-    }
-
-    static constexpr float base_regular_quantity(const MapGenSettings& settings, const ResourceType type) {
-        /*
-        regular_spot_quantity_base_at = "1000000 / base_spots_per_km2 / frequency_multiplier * regular_density_at(distance)"
-
-        regular_spot_quantity_expression = "random_penalty_between(random_spot_size_minimum, random_spot_size_maximum, 1) * \z
-                                            regular_spot_quantity_base_at(distance)"
-        */
-
-        return 1000000.f / BASE_SPOTS_PER_KM2 / settings.frequencies[type];
-    }
-
-    inline const auto& get_penalties() const { return _penalties; }
     inline const auto& get_base_regular_densities() const { return _base_regular_densities; }
     inline const auto& get_base_regular_quantities() const { return _base_regular_quantities; }
+
+    inline const auto& get_starter_base_densities() const { return _starter_base_densities; }
+    inline const auto& get_starter_quantities() const { return _starter_quantities; }
+    inline const auto& get_starter_radii() const { return _starter_radii; }
 
     inline float get_water_level() const { return _water_level; }
     inline float get_make_0_12like_lakes_input_scale() const { return _make_0_12like_lakes_input_scale; }
     inline float get_make_0_12like_lakes_offset_x() const { return _make_0_12like_lakes_offset_x; }
 
 private:
-    std::array<std::array<float, MAX_NB_SPOTS>, MAX_REGION_SIZE*MAX_REGION_SIZE> _penalties;
+    std::array<float, STARTER_NB_SPOTS>* _starter_penalties;
+    std::array<float, REGULAR_MAX_NB_SPOTS>* _regular_penalties;
+
+    std::array<float, NB_RESOURCE_TYPE> _starter_base_densities;
+    std::array<float, NB_RESOURCE_TYPE> _starter_quantities;
+    std::array<float, NB_RESOURCE_TYPE> _starter_radii;
+
     std::array<float, NB_RESOURCE_TYPE> _base_regular_densities;
     std::array<float, NB_RESOURCE_TYPE> _base_regular_quantities;
 
@@ -76,35 +50,34 @@ std::pair<float, float> starter_lake_position(uint32_t seed);
 class Noise {
 public:
     Noise() = delete;
-
     /**
-     * quick_multioctave_capable will make this constructor significantly
+     * quick_multioctave_precompute will make this constructor significantly
      * slower but it is necessary for the quick_multioctave_noise function
-     * and the other functions that use it (lake/elevation functions)
+     * and the other functions that use quick_multioctave_noise (lake/elevation functions)
      * 
-     * Also the stater_patches function requires a quick_multioctave_capable
+     * Also the stater_patches function requires a quick_multioctave_precompute == true
      * Noise as one of its arguments.
      */
-    Noise(uint32_t seed0, bool quick_multioctave_capable);
+    Noise(uint32_t seed0, bool quick_multioctave_precompute);
 
-    float noise(uint8_t seed1, float x, float y, float input_scale, float output_scale, float offset_x, float offset_y);
+    float noise(uint8_t seed1, float x, float y, float input_scale, float output_scale, float offset_x, float offset_y) const;
     float multioctave_noise(
         uint8_t seed1, float x, float y, float persistence, float octaves,
         float input_scale, float output_scale, float offset_x, float offset_y
-    );
+    ) const;
     float persistence_multioctave_noise(
         uint8_t seed1, float x, float y, float persistence, float octaves,
         float input_scale, float output_scale, float offset_x, float offset_y
-    );
+    ) const;
     float quick_multioctave_noise(
         uint8_t seed1, float x, float y, uint32_t octaves, float input_scale,
         float output_scale, float offset_x, float offset_y, float octave_input_scale_multiplier,
-        float octave_output_scale_multiplier, float octave_seed0_shift
-    );
+        float octave_output_scale_multiplier, uint32_t octave_seed0_shift
+    ) const;
 
-    float make_0_12like_lakes(const MapGenSettings&, const NoisePrecompute&, float x, float y);
-    float finish_elevation(const MapGenSettings&, const NoisePrecompute&, float elevation, float x, float y);
-    float elevation_lakes(const MapGenSettings&, const NoisePrecompute&, float x, float y);
+    float make_0_12like_lakes(const MapGenSettings&, const NoisePrecompute&, float x, float y) const;
+    float finish_elevation(const MapGenSettings&, const NoisePrecompute&, float elevation, float x, float y) const;
+    float elevation_lakes(const MapGenSettings&, const NoisePrecompute&, float x, float y) const;
 
 private:
     struct Permutations {
@@ -114,119 +87,23 @@ private:
         std::array<std::pair<float, float>, 256> grad;
     };
 
-    float _noise(uint8_t seed0_offset, uint8_t seed1, float x, float y, float input_scale, float output_scale, float offset_x, float offset_y);
-    std::pair<float, float> _gradient(uint8_t x, uint8_t y, uint8_t p1, const Permutations&);
+    float _noise_internal(uint32_t seed0_offset, uint8_t seed1, float x, float y, float input_scale, float output_scale, float offset_x, float offset_y) const;
+    std::pair<float, float> _gradient(uint8_t x, uint8_t y, uint8_t p1, const Permutations&) const;
 
+    bool _quick_multioctave_precompute;
     std::array<Permutations, QUICK_MULTIOCTAVE_MAX_SEED_OFFSET> _permutations;
 
     std::pair<float, float> _starter_lake;
 };
 
-/*
-elevation_lakes = finish_elevation{elevation = make_0_12like_lakes{x = x,\z
-                                                                   y = y,\z
-                                                                   bias = 20,\z
-                                                                   terrain_octaves = 8,\z
-                                                                   segmentation_multiplier = segmentation_multiplier},\z
-                                   segmentation_multiplier = segmentation_multiplier}
-
-finish_elevation = min((elevation - water_level) / segmentation_multiplier,\z
-                      basis_noise{x = x, y = y, seed0 = map_seed, seed1 = 123, input_scale = 1/8, output_scale = 1.5} + \z
-                      starting_lake_distance / 4 - 4,\z
-                      -1 + (starting_lake_distance + starting_lake_noise) / 16,\z
-                      max(2, 2 + starting_lake_distance / 16 + starting_lake_noise / 2))
-
-{
-    type = "noise-expression",
-    name = "water_level",
-    expression = "10 * log2(control:water:size)"
-},
-
-starting_lake_distance = "distance_from_nearest_point{x = x, y = y, points = starting_lake_positions, maximum_distance = 1024}",
-starting_lake_noise = "quick_multioctave_noise_persistence{x = x,\z
-                                                            y = y,\z
-                                                            seed0 = map_seed,\z
-                                                            seed1 = 14,\z
-                                                            input_scale = 1/8,\z
-                                                            output_scale = 1,\z
-                                                            octaves = 5,\z
-                                                            octave_input_scale_multiplier = 0.5,\z
-                                                            persistence = 0.75}"
-
-  {
-    type = "noise-function",
-    name = "quick_multioctave_noise_persistence",
-    parameters = {"x", "y", "seed0", "seed1", "input_scale", "output_scale", "octaves", "octave_input_scale_multiplier", "persistence"},
-    expression = "quick_multioctave_noise{x = x,\z
-                                          y = y,\z
-                                          seed0 = seed0,\z
-                                          seed1 = seed1,\z
-                                          input_scale = input_scale * octave_input_scale_multiplier ^ (octaves - 1),\z
-                                          output_scale = output_scale * 2 ^ (octaves - 1),\z
-                                          octaves = octaves,\z
-                                          octave_output_scale_multiplier = persistence,\z
-                                          octave_input_scale_multiplier = 1 / octave_input_scale_multiplier}"
-  },
-
-  {
-    type = "noise-function",
-    name = "make_0_12like_lakes",
-    parameters = {"x", "y", "bias", "terrain_octaves", "segmentation_multiplier"},
-    expression = "max(bias + variable_persistence_multioctave_noise{x = x,\z
-                                                                    y = y,\z
-                                                                    seed0 = map_seed,\z
-                                                                    seed1 = 1,\z
-                                                                    input_scale = input_scale,\z
-                                                                    output_scale = 0.125,\z
-                                                                    offset_x = offset_x,\z
-                                                                    octaves = terrain_octaves,\z
-                                                                    persistence = persistence},\z
-                      20 + water_level - 0.1 * segmentation_multiplier * distance + \z
-                      variable_persistence_multioctave_noise{x = x,\z
-                                                             y = y,\z
-                                                             seed0 = map_seed,\z
-                                                             seed1 = 2,\z
-                                                             input_scale = input_scale,\z
-                                                             output_scale = 0.125,\z
-                                                             offset_x = offset_x,\z
-                                                             octaves = 6,\z
-                                                             persistence = persistence})",
-    local_expressions =
-    {
-      input_scale = "segmentation_multiplier / 2",
-      offset_x = "10000 / segmentation_multiplier",
-      persistence = "clamp(amplitude_corrected_multioctave_noise{x = x,\z
-                                                                 y = y,\z
-                                                                 seed0 = map_seed,\z
-                                                                 seed1 = 1,\z
-                                                                 octaves = terrain_octaves - 2,\z
-                                                                 input_scale = input_scale,\z
-                                                                 offset_x = offset_x,\z
-                                                                 persistence = 0.7,\z
-                                                                 amplitude = 0.5} + 0.3,\z
-                          0.1, 0.9)"
-    }
-
-  {
-    type = "noise-function",
-    name = "amplitude_corrected_multioctave_noise",
-    parameters = {"x", "y", "seed0", "seed1", "input_scale", "offset_x", "octaves", "persistence", "amplitude"},
-    expression = "variable_persistence_multioctave_noise{x = x,\z
-                                                         y = y,\z
-                                                         seed0 = seed0,\z
-                                                         seed1 = seed1,\z
-                                                         input_scale = input_scale,\z
-                                                         output_scale = (1 - persistence) / 2 ^ octaves / (1 - persistence ^ octaves) * amplitude,\z
-                                                         offset_x = offset_x,\z
-                                                         octaves = octaves,\z
-                                                         persistence = persistence}"
-  },
-*/
-
 struct Candidate {
     int32_t x;
     int32_t y;
-    float density;
+    union {
+        float density;
+        float favorability;
+    };
+    float starting_modulation;
 };
 
 struct PseudoCandidate {
@@ -292,8 +169,15 @@ struct PatchArray {
 // NOT thread safe.
 class NoiseCache {
 public:
-    template<int32_t NbCandidates, int32_t ChunkCount>
-    using Chunks = std::array<PseudoCandidateArray<NbCandidates>, ChunkCount*ChunkCount>;
+    NoiseCache() {
+        _starter_chunks = new PseudoCandidateArray<NB_CANDIDATES[STARTER]>[CHUNK_COUNTS[STARTER]*CHUNK_COUNTS[STARTER]];
+        _regular_chunks = new PseudoCandidateArray<NB_CANDIDATES[REGULAR]>[CHUNK_COUNTS[REGULAR]*CHUNK_COUNTS[REGULAR]];
+    }
+
+    ~NoiseCache() {
+        delete[] _starter_chunks;
+        delete[] _regular_chunks;
+    }
 
     inline uint32_t get_id() { return ++_id; }
     template<PatchType Type>
@@ -304,11 +188,12 @@ public:
 
 private:
     uint32_t _id = 0;
-    Chunks<NB_CANDIDATES[STARTER], CHUNK_COUNTS[STARTER]> _starter_chunks;
-    Chunks<NB_CANDIDATES[REGULAR], CHUNK_COUNTS[REGULAR]> _regular_chunks;
+    PseudoCandidateArray<NB_CANDIDATES[STARTER]>* _starter_chunks;
+    PseudoCandidateArray<NB_CANDIDATES[REGULAR]>* _regular_chunks;
 };
 
 using Patches = std::array<PatchArray, NB_RESOURCE_TYPE>;
 
-Patches starter_patches(const NoisePrecompute&, NoiseCache&, uint32_t seed0);
+// Noise& must have quick_multioctave_precompute == true
+Patches starter_patches(const MapGenSettings& settings, const NoisePrecompute& precompute, const Noise& noise, NoiseCache& cache, const uint32_t seed0);
 Patches regular_patches(const NoisePrecompute&, NoiseCache&, uint32_t seed0);

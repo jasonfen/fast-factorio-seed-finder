@@ -1,8 +1,15 @@
+#define _USE_MATH_DEFINES
+#include <cmath>
 #include "noise.hpp"
 #include <chrono>
 #include <print>
 #include <iostream>
 #include <fstream>
+
+#pragma warning( push, 0 )
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+#pragma warning( pop )
 
 int main(int argc, char* argv[]) {
     if (argc <= 1) {
@@ -21,12 +28,11 @@ int main(int argc, char* argv[]) {
         settings.sizes[t] = 6.f;
         settings.richness[t] = 6.f;
     }
-    NoisePrecompute* precompute = new NoisePrecompute(settings);
-    NoiseCache* cache = new NoiseCache;
+    NoisePrecompute precompute(settings);
+    Noise noise(seed0, true);
+    NoiseCache cache;
 
-    auto patches = regular_patches(*precompute, *cache, seed0);
-    delete precompute;
-    delete cache;
+    auto patches = starter_patches(settings, precompute, noise, cache, seed0);
 
     // Output buffer: RGB bytes
     std::vector<unsigned char> img(IMG_SIZE * IMG_SIZE * 3, 255);
@@ -37,6 +43,15 @@ int main(int argc, char* argv[]) {
             // Map pixel -> world coordinates used by generate_candidates
             float wx = px - shift;
             float wy = py - shift;
+            size_t idx = (py * IMG_SIZE + px) * 3;
+
+            // float v = 5.f + noise.quick_multioctave_noise(22, wx, wy, 2, 0.16f, 10.f, 300.f, 200.f, 0.5f, 2.f, 1);
+            // float v = noise.elevation_lakes(settings, *precompute, wx, wy);
+            // if (v <= 0) {
+            //     img[idx+0] = 0;   img[idx+1] = 0;   img[idx+2] = 0;
+            // } else {
+            //     img[idx+0] = 255; img[idx+1] = 255; img[idx+2] = 255;
+            // }
 
             float best_val = -std::numeric_limits<float>::infinity();
             ResourceType best_type = NB_RESOURCE_TYPE;
@@ -50,7 +65,7 @@ int main(int argc, char* argv[]) {
                     float dist = std::sqrtf(dx*dx + dy*dy);
 
                     float slope = 0.f;
-                    if (p.radius > 0.f) slope = 3.f * p.quantity / (M_PI * p.radius * p.radius * p.radius);
+                    if (p.radius > 0.f) slope = 3.f * p.quantity / float(M_PI * p.radius * p.radius * p.radius);
 
                     float val = (p.radius - dist) * slope;
                     if (val > best_for_type) best_for_type = val;
@@ -62,7 +77,6 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            size_t idx = (py * IMG_SIZE + px) * 3;
             if (best_val <= 0.f || best_type == NB_RESOURCE_TYPE) {
                 // background white
                 img[idx+0] = 255; img[idx+1] = 255; img[idx+2] = 255;
@@ -78,16 +92,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    std::ofstream ofs("/home/ness056/CodeProjets/factorio-reverse-engineering/build/patches.ppm", std::ios::binary);
-    if (!ofs) {
-        std::cerr << "Failed to open output file\n";
-        return 1;
-    }
+    stbi_write_png("./img.png", IMG_SIZE, IMG_SIZE, 3, img.data(), 3*IMG_SIZE*sizeof(unsigned char));
+    std::cout << "img.png\n";
 
-    ofs << "P6\n" << IMG_SIZE << " " << IMG_SIZE << "\n255\n";
-    ofs.write((char*)img.data(), img.size());
-    ofs.close();
-
-    std::cout << "Wrote patches.ppm\n";
     return 0;
 }

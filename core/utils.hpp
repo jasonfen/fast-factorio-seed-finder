@@ -8,6 +8,8 @@
 #include <functional>
 #include <mutex>
 #include <concepts>
+#include <string>
+#include <algorithm>
 
 enum ResourceType {
     IRON,
@@ -48,7 +50,7 @@ constexpr std::string thousands_separator(std::integral auto n) {
 
     int count = 0;
 
-    for (int i = num.size() - 1; i >= 0; i--) {
+    for (int i = (int)num.size() - 1; i >= 0; i--) {
         count++;
         out.push_back(num[i]);
 
@@ -58,7 +60,7 @@ constexpr std::string thousands_separator(std::integral auto n) {
         }
     }
 
-    reverse(out.begin(), out.end());
+    std::reverse(out.begin(), out.end());
 
     if (out.size() % 4 == 0) {
         out.erase(out.begin());
