@@ -6,6 +6,39 @@
 
 static constexpr uint32_t SEED_MAX = 4294967295;
 
+static constexpr uint8_t QUICK_MULTIOCTAVE_MAX_SEED_OFFSET = 5;
+
+static constexpr uint8_t MAKE_0_12LIKE_LAKES_PERSISTENCE_SEED1 = 1;
+static constexpr uint8_t MAKE_0_12LIKE_LAKES_BIAS_SEED1A = 1;
+static constexpr uint8_t MAKE_0_12LIKE_LAKES_BIAS_SEED1B = 2;
+static constexpr float MAKE_0_12LIKE_LAKES_BIAS = 20.f;
+static constexpr uint32_t TERRAIN_OCTAVES = 8;
+static constexpr uint32_t MAKE_0_12LIKE_LAKES_PERSISTENCE_OCTAVES = TERRAIN_OCTAVES - 2;
+static constexpr float MAKE_0_12LIKE_LAKES_PERSISTENCE_PERSISTENCE = 0.7f;
+static constexpr float MAKE_0_12LIKE_LAKES_PERSISTENCE_OUTPUT_SCALE =
+    (1.f - MAKE_0_12LIKE_LAKES_PERSISTENCE_PERSISTENCE) /
+    std::exp2(MAKE_0_12LIKE_LAKES_PERSISTENCE_OCTAVES) /
+    (1.f - std::pow(MAKE_0_12LIKE_LAKES_PERSISTENCE_PERSISTENCE, MAKE_0_12LIKE_LAKES_PERSISTENCE_OCTAVES)) *
+    0.5f;
+static constexpr uint32_t MAKE_0_12LIKE_LAKES_OCTAVES_A = TERRAIN_OCTAVES;
+static constexpr uint32_t MAKE_0_12LIKE_LAKES_OCTAVES_B = 6;
+static constexpr float MAKE_0_12LIKE_LAKES_OUTPUT_SCALE = 0.125f;
+
+static constexpr uint8_t FINISH_ELEVATION_NOISE_SEED1 = 123;
+
+static constexpr uint8_t STARTER_LAKE_SEED1 = 14;
+static constexpr float STARTER_LAKE_INPUT_SCALE = 1.f/8;
+static constexpr float STARTER_LAKE_OUTPUT_SCALE = 1.f;
+static constexpr int STARTER_LAKE_OCTAVES = 5;
+static constexpr float STARTER_LAKE_OCTAVE_INPUT_SCALE_MULTIPLIER = 0.5f;
+static constexpr float STARTER_LAKE_PERSISTENCE = 0.75f;
+
+static constexpr float STARTER_LAKE_INPUT_SCALE2 =
+    STARTER_LAKE_INPUT_SCALE * std::pow(STARTER_LAKE_OCTAVE_INPUT_SCALE_MULTIPLIER, (STARTER_LAKE_OCTAVES - 1));
+static constexpr float STARTER_LAKE_OUTPUT_SCALE2 = STARTER_LAKE_OUTPUT_SCALE * std::exp2(STARTER_LAKE_OCTAVES - 1);
+static constexpr float STARTER_LAKE_OCTAVE_INPUT_SCALE_MULTIPLIER2 = 1 / STARTER_LAKE_OCTAVE_INPUT_SCALE_MULTIPLIER;
+
+
 static constexpr std::array<int32_t, NB_PATCH_TYPE> REGION_SIZES{
     240, 1024
 };

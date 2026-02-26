@@ -8,7 +8,7 @@
 
 class NoisePrecompute {
 public:
-    NoisePrecompute(const MapGenSettings& settings) {
+    constexpr NoisePrecompute(const MapGenSettings& settings) {
         for (int32_t i = 0; i < MAX_REGION_SIZE; i++) {
             for (int32_t j = 0; j < MAX_REGION_SIZE; j++) {
                 int32_t x = i - (MAX_REGION_SIZE / 2);
@@ -24,6 +24,10 @@ public:
             _base_regular_densities[type] = base_regular_density(settings, type);
             _base_regular_quantities[type] = base_regular_quantity(settings, type);
         }
+
+        _water_level = 10 * std::log2(settings.water_coverage);
+        _make_0_12like_lakes_input_scale = settings.water_scale / 2;
+        _make_0_12like_lakes_offset_x = 10000.f / settings.water_scale;
     }
 
     static constexpr float base_regular_density(const MapGenSettings& settings, const ResourceType type) {
@@ -53,34 +57,69 @@ public:
     inline const auto& get_base_regular_densities() const { return _base_regular_densities; }
     inline const auto& get_base_regular_quantities() const { return _base_regular_quantities; }
 
+    inline float get_water_level() const { return _water_level; }
+    inline float get_make_0_12like_lakes_input_scale() const { return _make_0_12like_lakes_input_scale; }
+    inline float get_make_0_12like_lakes_offset_x() const { return _make_0_12like_lakes_offset_x; }
+
 private:
     std::array<std::array<float, MAX_NB_SPOTS>, MAX_REGION_SIZE*MAX_REGION_SIZE> _penalties;
     std::array<float, NB_RESOURCE_TYPE> _base_regular_densities;
     std::array<float, NB_RESOURCE_TYPE> _base_regular_quantities;
+
+    float _water_level;
+    float _make_0_12like_lakes_input_scale;
+    float _make_0_12like_lakes_offset_x;
 };
+
+std::pair<float, float> starter_lake_position(uint32_t seed);
 
 class Noise {
 public:
-    Noise(uint32_t seed0);
+    Noise() = delete;
+
+    /**
+     * quick_multioctave_capable will make this constructor significantly
+     * slower but it is necessary for the quick_multioctave_noise function
+     * and the other functions that use it (lake/elevation functions)
+     * 
+     * Also the stater_patches function requires a quick_multioctave_capable
+     * Noise as one of its arguments.
+     */
+    Noise(uint32_t seed0, bool quick_multioctave_capable);
 
     float noise(uint8_t seed1, float x, float y, float input_scale, float output_scale, float offset_x, float offset_y);
-    float multioctave_noise(uint8_t seed1, float x, float y, float persistence, float octaves,
-        float input_scale, float output_scale, float offset_x, float offset_y);
-    float persistence_multioctave_noise(uint8_t seed1, float x, float y, float persistence, float octaves,
-        float input_scale, float output_scale, float offset_x, float offset_y);
-    float amplitude_corrected_multioctave_noise(uint8_t seed1, float x, float y, float persistence, float octaves,
-        float input_scale, float output_scale, float offset_x, float offset_y);
-    
+    float multioctave_noise(
+        uint8_t seed1, float x, float y, float persistence, float octaves,
+        float input_scale, float output_scale, float offset_x, float offset_y
+    );
+    float persistence_multioctave_noise(
+        uint8_t seed1, float x, float y, float persistence, float octaves,
+        float input_scale, float output_scale, float offset_x, float offset_y
+    );
+    float quick_multioctave_noise(
+        uint8_t seed1, float x, float y, uint32_t octaves, float input_scale,
+        float output_scale, float offset_x, float offset_y, float octave_input_scale_multiplier,
+        float octave_output_scale_multiplier, float octave_seed0_shift
+    );
+
+    float make_0_12like_lakes(const MapGenSettings&, const NoisePrecompute&, float x, float y);
     float finish_elevation(const MapGenSettings&, const NoisePrecompute&, float elevation, float x, float y);
     float elevation_lakes(const MapGenSettings&, const NoisePrecompute&, float x, float y);
 
 private:
-    std::pair<float, float> _gradient(uint8_t p1, uint8_t x, uint8_t y);
+    struct Permutations {
+        std::array<uint8_t, 256> p1;
+        std::array<uint8_t, 256> p2;
+        std::array<uint8_t, 256> p3;
+        std::array<std::pair<float, float>, 256> grad;
+    };
 
-    std::array<uint8_t, 256> _p1;
-    std::array<uint8_t, 256> _p2;
-    std::array<uint8_t, 256> _p3;
-    std::array<std::pair<float, float>, 256> _grad;
+    float _noise(uint8_t seed0_offset, uint8_t seed1, float x, float y, float input_scale, float output_scale, float offset_x, float offset_y);
+    std::pair<float, float> _gradient(uint8_t x, uint8_t y, uint8_t p1, const Permutations&);
+
+    std::array<Permutations, QUICK_MULTIOCTAVE_MAX_SEED_OFFSET> _permutations;
+
+    std::pair<float, float> _starter_lake;
 };
 
 /*

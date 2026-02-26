@@ -3,28 +3,47 @@
 #include <numeric>
 #include <cmath>
 
-Noise::Noise(uint32_t seed0) {
+std::pair<float, float> starter_lake_position(uint32_t seed) {
+    Random random(seed);
+
+    constexpr float d = 75.f;
+    constexpr float factor = M_PI * std::exp2(-31);
+    float angle = factor * random.random();
+
+    return std::make_pair(d*std::cos(angle), d*std::sin(angle));
+}
+
+Noise::Noise(uint32_t seed0, bool quick_multioctave_capable) {
     Random random(seed0);
 
-    std::iota(_p1.begin(), _p1.end(), 0);
-    std::iota(_p2.begin(), _p2.end(), 0);
-    std::iota(_p3.begin(), _p3.end(), 0);
-    _grad = default_gradients();
+    int max = quick_multioctave_capable ? 1 : QUICK_MULTIOCTAVE_MAX_SEED_OFFSET;
+    for (int i = 0; i < max; i++) {
+        auto& p = _permutations[i];
 
-    random.shuffle(_p1);
-    random.shuffle(_p2);
-    random.shuffle(_p3);
-    random.shuffle(_grad);
+        std::iota(p.p1.begin(), p.p1.end(), 0);
+        std::iota(p.p2.begin(), p.p2.end(), 0);
+        std::iota(p.p3.begin(), p.p3.end(), 0);
+        p.grad = default_gradients();
+    
+        random.shuffle(p.p1);
+        random.shuffle(p.p2);
+        random.shuffle(p.p3);
+        random.shuffle(p.grad);
+    }
+
+    _starter_lake = starter_lake_position(seed0);
 }
 
-std::pair<float, float> Noise::_gradient(uint8_t p1, uint8_t x, uint8_t y) {
-    uint8_t y_permutation = p1 ^ _p2[y];
-    uint8_t xy_permutation = y_permutation ^ _p3[x];
-    return _grad[xy_permutation];
+std::pair<float, float> Noise::_gradient(uint8_t x, uint8_t y, uint8_t p1, const Permutations& p) {
+    uint8_t y_permutation = p1 ^ p.p2[y];
+    uint8_t xy_permutation = y_permutation ^ p.p3[x];
+    return p.grad[xy_permutation];
 }
 
-float Noise::noise(uint8_t seed1, float x, float y, float input_scale, float output_scale, float offset_x, float offset_y) {
-    const uint8_t p1 = _p1[seed1];
+float Noise::_noise(uint8_t seed0_offset, uint8_t seed1, float x, float y, float input_scale, float output_scale, float offset_x, float offset_y) {
+    const auto& p = _permutations[seed0_offset];
+
+    const uint8_t p1 = p.p1[seed1];
     
     const float x_scaled = (x + offset_x) * input_scale;
     const float y_scaled = (y + offset_y) * input_scale;
@@ -53,7 +72,7 @@ float Noise::noise(uint8_t seed1, float x, float y, float input_scale, float out
     float sum = 0.f;
 
     for (int i = 0; i < 4; i++) {
-        const auto gradient = _gradient(p1, points[i].first, points[i].second);
+        const auto gradient = _gradient(points[i].first, points[i].second, p1, p);
 
         const float x_frac_offset = x_frac - dcba[i].first;
         const float y_frac_offset = y_frac - dcba[i].second;
@@ -69,11 +88,9 @@ float Noise::noise(uint8_t seed1, float x, float y, float input_scale, float out
     return sum * output_scale;
 }
 
-// float Noise::multioctave_noise(float x, float y, float persistence, float octaves,
-//     float input_scale, float output_scale, float offset_x, float offset_y
-// ) {
-//     return 0;
-// }
+float Noise::noise(uint8_t seed1, float x, float y, float input_scale, float output_scale, float offset_x, float offset_y) {
+    return _noise(0, seed1, x, y, input_scale, output_scale, offset_x, offset_y);
+}
 
 float Noise::persistence_multioctave_noise(uint8_t seed1, float x, float y, float persistence, float octaves,
     float input_scale, float output_scale, float offset_x, float offset_y
@@ -94,41 +111,71 @@ float Noise::persistence_multioctave_noise(uint8_t seed1, float x, float y, floa
     return sum * output_scale;
 }
 
-float Noise::finish_elevation(const MapGenSettings& settings, const NoisePrecompute& precompute, float elevation, float x, float y) {
-    float dx = x - precompute.starter_lake.x;
-    float dy = y - precompute.starter_lake.y;
-    float starting_lake_distance = std::sqrt(dx*dx + dy*dy);
+float Noise::quick_multioctave_noise(
+    uint8_t seed1, float x, float y, uint32_t octaves, float input_scale,
+    float output_scale, float offset_x, float offset_y, float octave_input_scale_multiplier,
+    float octave_output_scale_multiplier, float octave_seed0_shift
+) {
 
-    constexpr float input_scale = 1.f/8;
-    constexpr float output_scale = 1.f;
-    constexpr int octaves = 5;
-    constexpr float octave_input_scale_multiplier = 0.5f;
-    constexpr float persistence = 0.75f;
-    float starting_lake_noise = quick_multioctave_noise(
-        
-    )
+}
+
+float Noise::make_0_12like_lakes(const MapGenSettings& settings, const NoisePrecompute& precompute, float x, float y) {
+    const float input_scale = precompute.get_make_0_12like_lakes_input_scale();
+    const float offset_x = precompute.get_make_0_12like_lakes_offset_x();
     
-    return std::min(
-        (elevation - precompute.water_level) / settings.water_scale,
-        noise(123, x, y, 1/8, 1.5) + starting_lake_distance / 4 - 4,
-        -1 + (starting_lake_distance + starting_lake_noise) / 16,
-        max(2, 2 + starting_lake_distance / 16 + starting_lake_noise / 2)
-    )
+    const float persistence = std::clamp(
+        0.3f + persistence_multioctave_noise(
+            MAKE_0_12LIKE_LAKES_PERSISTENCE_SEED1, x, y, MAKE_0_12LIKE_LAKES_PERSISTENCE_PERSISTENCE,
+            MAKE_0_12LIKE_LAKES_PERSISTENCE_OCTAVES, input_scale, MAKE_0_12LIKE_LAKES_PERSISTENCE_OUTPUT_SCALE,
+            offset_x, 0
+        ),
+        0.1f, 0.9f
+    );
+
+    const float distance = std::sqrt(x*x + y*y);
+
+    const float a = MAKE_0_12LIKE_LAKES_BIAS + persistence_multioctave_noise(
+        MAKE_0_12LIKE_LAKES_BIAS_SEED1A, x, y, persistence, MAKE_0_12LIKE_LAKES_OCTAVES_A,
+        input_scale, MAKE_0_12LIKE_LAKES_OUTPUT_SCALE, offset_x, 0
+    );
+
+    const float b = 20.f + precompute.get_water_level() -
+        0.1 * settings.water_scale * distance +
+        persistence_multioctave_noise(
+            MAKE_0_12LIKE_LAKES_BIAS_SEED1B, x, y, persistence, MAKE_0_12LIKE_LAKES_OCTAVES_B,
+            input_scale, MAKE_0_12LIKE_LAKES_OUTPUT_SCALE, offset_x, 0
+        );
+    
+    return std::max(a, b);
+}
+
+float Noise::finish_elevation(const MapGenSettings& settings, const NoisePrecompute& precompute, float elevation, float x, float y) {
+    const float dx = x - _starter_lake.first;
+    const float dy = y - _starter_lake.second;
+    const float starting_lake_distance = std::sqrt(dx*dx + dy*dy);
+
+    const float starting_lake_noise = quick_multioctave_noise(
+        STARTER_LAKE_SEED1, x, y, STARTER_LAKE_OCTAVES, STARTER_LAKE_INPUT_SCALE2,
+        STARTER_LAKE_OUTPUT_SCALE2, 0.f, 0.f, STARTER_LAKE_OCTAVE_INPUT_SCALE_MULTIPLIER2,
+        2.f, 1
+    );
+
+    const float a = std::min(
+        (elevation - precompute.get_water_level()) / settings.water_scale,
+        noise(FINISH_ELEVATION_NOISE_SEED1, x, y, 1.f/8, 1.5f, 0.f, 0.f) + starting_lake_distance / 4.f - 4.f
+    );
+
+    const float b = std::min(
+        -1 + (starting_lake_distance + starting_lake_noise) / 16.f,
+        std::max(2.f, 2.f + starting_lake_distance / 16.f + starting_lake_noise / 2.f)
+    );
+    
+    return std::min(a, b);
 }
 
 float Noise::elevation_lakes(const MapGenSettings& settings, const NoisePrecompute& precompute, float x, float y) {
-    float lakes = make_0_12like_lakes()
-    return finish_elevation(lakes)
-}
-
-float Noise::amplitude_corrected_multioctave_noise(uint8_t seed1, float x, float y, float persistence, float octaves,
-    float input_scale, float output_scale, float offset_x, float offset_y
-) {
-    const float corrected_output_scale = (1 - persistence) / std::exp2(octaves) / (1 - std::pow(persistence, octaves)) * output_scale;
-
-    return persistence_multioctave_noise(
-        seed1, x, y, persistence, octaves, input_scale, corrected_output_scale, offset_x, offset_y
-    );
+    float lakes = make_0_12like_lakes(settings, precompute, x, y);
+    return finish_elevation(settings, precompute, lakes, x, y);
 }
 
 template<PatchType Type>

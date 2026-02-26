@@ -5,14 +5,14 @@
 #include <fstream>
 
 void benchmark(int n) {
-    Noise noise(250, 22);
+    Noise noise(250, false);
     float sum = 0;
 
     auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < n; i++) {
         for (float x = 0; x < 1000.f; x++) {
             for (float y = 0; y < 1000.f; y++) {
-                sum += noise.noise(x, y, 0.01, 10, 300, 200);
+                sum += noise.noise(22, x, y, 0.01, 10, 300, 200);
             }
         }
     }
