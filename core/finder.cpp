@@ -122,7 +122,7 @@ int Finder::run(std::string program_name, int argc, char* argv[]) {
             previous_progress = current_progress;
             previous_time = current_time;
 
-            std::this_thread::sleep_for(25ms);
+            std::this_thread::sleep_for(100ms);
         }
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -137,7 +137,7 @@ int Finder::run(std::string program_name, int argc, char* argv[]) {
     std::ofstream out(out_path);
     while (!_top_seeds.empty()) {
         auto pair = _top_seeds.get_pop();
-        out << pair.second << "; " << pair.second << std::endl;
+        out << pair.first << "; " << pair.second << std::endl;
     }
 
     return 0;

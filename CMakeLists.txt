@@ -11,10 +11,11 @@ add_library(warnings_interface INTERFACE)
 target_compile_options(warnings_interface INTERFACE
     $<$<CXX_COMPILER_ID:GNU>:-Wall -Wextra -Wpedantic -Werror>
     $<$<CXX_COMPILER_ID:Clang>:-Wall -Wextra -Wpedantic -Werror>
-    $<$<CXX_COMPILER_ID:MSVC>:/W4>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /fp:strict>
 )
 
 add_subdirectory(core)
 add_subdirectory(image_generator)
 add_subdirectory(benchmark)
 add_subdirectory(solo_any_seed_finder)
+add_subdirectory(ds_seed_finder)

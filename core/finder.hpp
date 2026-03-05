@@ -13,11 +13,11 @@
  * It works in stages: the first stage is ran for every seed,
  * and the other stages are only ran for the seeds that passed the previous stage.
  * It is made that way because certain criteria may be easier to compute than other,
- * and running the expensive criteria on for every seed may take too long.
+ * and running the expensive criteria on every seed may take too long.
  * For instance, generating the positions/radii of regular patches is around 10x faster than
  * generating the same for starter patches + there are 72x more configurations of starter patches
  * than regular patches because of water settings and twin seeds. So on my computer
- * generating the regular patches take ~30min but the same with starter patches would take multiple days.
+ * generating the regular patches take ~10min but the same with starter patches would take multiple days.
  * Moreover, a full scan with water or the exact shape of patches would probably
  * take more like a month with my computer.
  * We can use this by eliminating as many seeds as possible during the first stage using only
@@ -27,9 +27,9 @@ class Finder {
 public:
     struct EvalResult {
         // If true, score is ignored and the seed will instantly be eliminated.
-        // It should be true for as many seeds, in particular for the first stage
+        // It should be true for as many seeds as possible, in particular during the first stage
         // as inserting seeds into the seed list is not very fast.
-        // For the first stage I would say at least 95% of the seeds should be eliminated.
+        // During the first stage I would say at least 95% of the seeds should be eliminated.
         bool eliminate;
         float score;
     };
@@ -38,9 +38,12 @@ public:
     using EvalFunction = std::function<EvalResult(const MapGenSettings&, const NoisePrecompute&, NoiseCache&, SeedScorePair)>;
 
     struct StageSettings {
+        // For a given integer n, the regular patches are the exact same for the seeds 2n and 2n+1.
+        // So only looking at even seeds is enough check them.
+        //
         // True => check all seeds.
         // False => only check even number seeds.
-        // If any stage has this set to true, this will be set to true for 
+        // If any stage has this set to true, this will true for 
         // every following stages, ignoring the setting.
         bool check_twin_seeds;
 

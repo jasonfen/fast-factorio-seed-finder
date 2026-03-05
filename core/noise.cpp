@@ -4,6 +4,7 @@
 #include <numeric>
 #include <cmath>
 #include <print>
+#include "math.hpp"
 
 NoisePrecompute::NoisePrecompute(const MapGenSettings& settings) {
     _starter_penalties = new std::array<float, STARTER_NB_SPOTS>[REGION_SIZES[STARTER]*REGION_SIZES[STARTER]];
@@ -45,7 +46,7 @@ NoisePrecompute::NoisePrecompute(const MapGenSettings& settings) {
                                             regular_spot_quantity_base_at(distance)"
         */
         _base_regular_densities[type] = BASE_DENSITIES[type] * settings.frequencies[type] * settings.sizes[type];
-        _base_regular_quantities[type] = 1000000.f / BASE_SPOTS_PER_KM2 / settings.frequencies[type];
+        _base_regular_quantities[type] = 1000000.f / BASES_SPOTS_PER_KM2[type] / settings.frequencies[type];
 
         /*
         density_expression = starting_amount / (pi * starting_resource_placement_radius * starting_resource_placement_radius) * \z
@@ -70,23 +71,32 @@ NoisePrecompute::NoisePrecompute(const MapGenSettings& settings) {
         _starter_base_densities[type] = REGION_SIZES[STARTER]*REGION_SIZES[STARTER] * density_expression / STARTER_NB_SPOTS;
 
         _starter_quantities[type] = starting_amount / STARTING_PATCHES_SPLIT / settings.frequencies[type];
-        _starter_radii[type] = RQ_FACTORS[STARTER][type] * std::cbrtf(_starter_quantities[type]);
+        _starter_radii[type] = RQ_FACTORS[STARTER][type] * Math::cbrtf(_starter_quantities[type]);
     }
 
-    _water_level = 10 * std::log2(settings.water_coverage);
+    _water_level = 10 * Math::log2f(settings.water_coverage);
     _make_0_12like_lakes_input_scale = settings.water_scale / 2;
     _make_0_12like_lakes_offset_x = 10000.f / settings.water_scale;
 
+    const float nauvis_segmentation_multiplier = 1.5f * settings.water_scale;
+    _nauvis_hills_input_scale = nauvis_segmentation_multiplier / 90.f;
+    _nauvis_hills_cliff_level_input_scale = nauvis_segmentation_multiplier / 500.f;
+    _starting_macro_multiplier_base = nauvis_segmentation_multiplier / 2000.f;
+    _nauvis_bridge_billows_input_scale = nauvis_segmentation_multiplier / 150.f;
+    _nauvis_persistance_input_scale = nauvis_segmentation_multiplier / 2.f;
+    _nauvis_offset_x = 10000.f / nauvis_segmentation_multiplier;
+    _nauvis_detail_input_scale = nauvis_segmentation_multiplier / 14.f;
+    _nauvis_macro_input_scale = nauvis_segmentation_multiplier / 1600.f;
+    _starting_island_multiplier = settings.water_scale / 200.f;
 }
 
-std::pair<float, float> starter_lake_position(uint32_t seed) {
+std::pair<int32_t, int32_t> starter_lake_position(uint32_t seed) {
     Random random(seed);
 
-    constexpr float d = 75.f;
-    const float factor = (float)M_PI * std::exp2f(-31);
-    float angle = factor * random.random();
+    constexpr double d = 75.f;
+    float angle = (float)(random.random() * (2*M_PI) * std::exp2(-32.));
 
-    return std::make_pair(d*std::cos(angle), d*std::sin(angle));
+    return std::make_pair((int32_t)std::trunc(d*Math::cos(angle)), (int32_t)std::trunc(d*Math::sin(angle)));
 }
 
 std::pair<float, float> Noise::_gradient(uint8_t x, uint8_t y, uint8_t p1, const Permutations& p) const {
@@ -95,33 +105,41 @@ std::pair<float, float> Noise::_gradient(uint8_t x, uint8_t y, uint8_t p1, const
     return p.grad[xy_permutation];
 }
 
-Noise::Noise(uint32_t seed0, bool quick_multioctave_precompute) {
+void Noise::_make_permutations(uint32_t seed0, Permutations& p) {
+    Random random(seed0);
+
+    std::iota(p.p1.begin(), p.p1.end(), (uint8_t)0);
+    std::iota(p.p2.begin(), p.p2.end(), (uint8_t)0);
+    std::iota(p.p3.begin(), p.p3.end(), (uint8_t)0);
+    p.grad = default_gradients();
+
+    random.shuffle(p.p1);
+    random.shuffle(p.p2);
+    random.shuffle(p.p3);
+    random.shuffle(p.grad);
+}
+
+Noise::Noise(uint32_t seed0, bool quick_multioctave_precompute, bool elevation2_0_precompute) {
     _quick_multioctave_precompute = quick_multioctave_precompute;
+    _elevation2_0_precompute = elevation2_0_precompute;
 
-    const int max = quick_multioctave_precompute ? QUICK_MULTIOCTAVE_MAX_SEED_OFFSET : 1;
-    for (int i = 0; i < max; i++) {
-        Random random(seed0 + i);
-        auto& p = _permutations[i];
+    const uint32_t max = quick_multioctave_precompute ? QUICK_MULTIOCTAVE_MAX_SEED_OFFSET : 1;
+    for (uint32_t i = 0; i < max; i++) {
+        _make_permutations(seed0 + i, _permutations[i]);
+    }
 
-        std::iota(p.p1.begin(), p.p1.end(), (uint8_t)0);
-        std::iota(p.p2.begin(), p.p2.end(), (uint8_t)0);
-        std::iota(p.p3.begin(), p.p3.end(), (uint8_t)0);
-        p.grad = default_gradients();
-    
-        random.shuffle(p.p1);
-        random.shuffle(p.p2);
-        random.shuffle(p.p3);
-        random.shuffle(p.grad);
+    if (elevation2_0_precompute) {
+        for (Seed0CustomOffsets i = (Seed0CustomOffsets)0; i < Seed0CustomOffsets::NB; i++) {
+            _make_permutations(seed0 + 7 * (SEED0_CUSTOM_OFFSETS[(size_t)i] >> 8), _custom_offset_permutations[(size_t)i]);
+        }
     }
 
     _starter_lake = starter_lake_position(seed0);
 }
 
 float Noise::_noise_internal(
-    uint32_t seed0_offset, uint8_t seed1, float x, float y, float input_scale, float output_scale, float offset_x, float offset_y
+    const Permutations& p, uint8_t seed1, float x, float y, float input_scale, float output_scale, float offset_x, float offset_y
 ) const {
-    const auto& p = _permutations[seed0_offset];
-
     const uint8_t p1 = p.p1[seed1];
     
     const float x_scaled = (x + offset_x) * input_scale;
@@ -152,46 +170,115 @@ float Noise::_noise_internal(
         std::make_pair( 1.f, 1.f )
     };
 
-    float sum = 0.f;
+    float sum1 = 0.f;
+    float sum2 = 0.f;
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 2; i++) {
         const auto gradient = _gradient(points[i].first, points[i].second, p1, p);
 
         const float x_frac_offset = x_frac - dcba[i].first;
         const float y_frac_offset = y_frac - dcba[i].second;
 
         const float d2 = 1.f - std::min(1.f, x_frac_offset*x_frac_offset + y_frac_offset*y_frac_offset);
+        const float d2_3 = d2*d2*d2;
 
-        sum += (
+        sum1 += (
             (x_frac_offset * gradient.first) +
             (y_frac_offset * gradient.second)
-        ) * d2*d2*d2;
+        ) * d2_3;
     }
 
-    return sum * output_scale;
+    for (int i = 2; i < 4; i++) {
+        const auto gradient = _gradient(points[i].first, points[i].second, p1, p);
+
+        const float x_frac_offset = x_frac - dcba[i].first;
+        const float y_frac_offset = y_frac - dcba[i].second;
+
+        const float d2 = 1.f - std::min(1.f, x_frac_offset*x_frac_offset + y_frac_offset*y_frac_offset);
+        const float d2_3 = d2*d2*d2;
+
+        sum2 += (
+            (x_frac_offset * gradient.first) +
+            (y_frac_offset * gradient.second)
+        ) * d2_3;
+    }
+
+    return (sum1 + sum2) * output_scale;
 }
 
 float Noise::noise(uint8_t seed1, float x, float y, float input_scale, float output_scale, float offset_x, float offset_y) const {
-    return _noise_internal(0, seed1, x, y, input_scale, output_scale, offset_x, offset_y);
+    return _noise_internal(_permutations[0], seed1, x, y, input_scale, output_scale, offset_x, offset_y);
 }
 
-float Noise::persistence_multioctave_noise(uint8_t seed1, float x, float y, float persistence, float octaves,
+static float modified_amplitude(float output_scale, uint32_t octaves, float persistence) {
+    if (persistence == 1.f) {
+        return (float)(output_scale / std::sqrt((double)octaves));
+    } else if (persistence == 0.f) {
+        return output_scale;
+    } else {
+        const float persistence_2 = persistence*persistence;
+        const float whatever_this_is = Math::exp2f(Math::log2f(persistence_2) * (float)octaves);
+        const float whatever_that_is = (persistence_2 - 1.f) / (whatever_this_is - 1.f);
+        return std::sqrtf(whatever_that_is) * output_scale;
+    }
+}
+
+float Noise::_multioctave_noise_internal(
+    const Permutations& p, uint8_t seed1, float x, float y, float persistence, uint32_t octaves,
     float input_scale, float output_scale, float offset_x, float offset_y
 ) const {
+    const float inv_persistence = 1.f / persistence;
+    output_scale = modified_amplitude(output_scale, octaves, inv_persistence);\
+    float sum = 0.f;
+
+    for (uint32_t current_octave = 0; current_octave < octaves; current_octave++) {
+        const float scaled_x = (float)((double)(input_scale * x) + (17.17 * current_octave));
+        const float scaled_y = input_scale * y;
+
+        sum += _noise_internal(p, seed1, scaled_x, scaled_y, 1.f, output_scale, offset_x, offset_y);
+
+        input_scale *= 0.5f;
+        output_scale *= inv_persistence;
+    }
+
+    return sum;
+}
+
+float Noise::multioctave_noise(
+    uint8_t seed1, float x, float y, float persistence, uint32_t octaves,
+    float input_scale, float output_scale, float offset_x, float offset_y
+) const {
+    return _multioctave_noise_internal(
+        _permutations[0], seed1, x, y, persistence, octaves, input_scale, output_scale, offset_x, offset_y
+    );
+}
+
+float Noise::_persistence_multioctave_noise_internal(const Permutations& p, uint8_t seed1, float x, float y,
+    float persistence, uint32_t octaves, float input_scale, float output_scale, float offset_x, float offset_y
+) const {
     input_scale *= 0.5f;
-    output_scale *= std::powf(2.f, octaves);
+    output_scale *= Math::powf(2.f, (float)octaves);
 
     float sum = 0.f;
-    for (int i = 1; i < octaves; i++) {
-        sum += noise(seed1, x, y, input_scale, 1.f, offset_x, offset_y);
+    for (uint32_t i = 1; i < octaves; i++) {
+        sum += _noise_internal(p, seed1, x, y, input_scale, 1.f, offset_x, offset_y);
         sum *= persistence;
 
         input_scale *= 0.5f;
     }
 
-    sum += noise(seed1, x, y, input_scale, 1.f, offset_x, offset_y);
+    sum += _noise_internal(p, seed1, x, y, input_scale, 1.f, offset_x, offset_y);
 
     return sum * output_scale;
+}
+
+float Noise::persistence_multioctave_noise(
+    uint8_t seed1, float x, float y, float persistence, uint32_t octaves,
+    float input_scale, float output_scale, float offset_x, float offset_y
+) const {
+    return _persistence_multioctave_noise_internal(
+        _permutations[0], seed1, x, y, persistence, octaves, input_scale, output_scale, offset_x, offset_y
+    );
 }
 
 float Noise::quick_multioctave_noise(
@@ -205,7 +292,7 @@ float Noise::quick_multioctave_noise(
     float sum = 0.f;
 
     for (uint32_t i = 0; i < octaves; i++) {
-        sum += _noise_internal(i*octave_seed0_shift, seed1, x, y, input_scale, output_scale, offset_x, offset_y);
+        sum += _noise_internal(_permutations[i*octave_seed0_shift], seed1, x, y, input_scale, output_scale, offset_x, offset_y);
 
         input_scale *= octave_input_scale_multiplier;
         output_scale *= octave_output_scale_multiplier;
@@ -214,108 +301,117 @@ float Noise::quick_multioctave_noise(
     return sum;
 }
 
-/*
-elevation_lakes = finish_elevation{elevation = make_0_12like_lakes{x = x,\z
-                                                                   y = y,\z
-                                                                   bias = 20,\z
-                                                                   terrain_octaves = 8,\z
-                                                                   segmentation_multiplier = segmentation_multiplier},\z
-                                   segmentation_multiplier = segmentation_multiplier}
+float Noise::_nauvis_hills_plateaus(const MapGenSettings&, const NoisePrecompute& precompute, float x, float y) const {
+    const float nauvis_hills = std::abs(_multioctave_noise_internal(
+        _custom_offset_permutations[(size_t)Seed0CustomOffsets::NAUVIS_HILLS],
+        (uint8_t)(SEED0_CUSTOM_OFFSETS[(size_t)Seed0CustomOffsets::NAUVIS_HILLS] % 256),
+        x, y,
+        0.5f, 4,
+        precompute.get_nauvis_hills_input_scale(), 1.f,
+        0.f, 0.f
+    ));
 
-finish_elevation = min((elevation - water_level) / segmentation_multiplier,\z
-                      basis_noise{x = x, y = y, seed0 = map_seed, seed1 = 123, input_scale = 1/8, output_scale = 1.5} + \z
-                      starting_lake_distance / 4 - 4,\z
-                      -1 + (starting_lake_distance + starting_lake_noise) / 16,\z
-                      max(2, 2 + starting_lake_distance / 16 + starting_lake_noise / 2))
+    const float nauvis_hills_cliff_level = std::clamp(0.65f + _noise_internal(
+        _custom_offset_permutations[(size_t)Seed0CustomOffsets::NAUVIS_HILLS_CLIFF_LEVEL],
+        (uint8_t)(SEED0_CUSTOM_OFFSETS[(size_t)Seed0CustomOffsets::NAUVIS_HILLS_CLIFF_LEVEL] % 256),
+        x, y,
+        precompute.get_nauvis_hills_cliff_level_input_scale(), 0.6f,
+        0.f, 0.f
+    ), 0.15f, 1.15f);
 
-{
-    type = "noise-expression",
-    name = "water_level",
-    expression = "10 * log2(control:water:size)"
-},
+    const float nauvis_plateaus = 0.5f + std::clamp((nauvis_hills - nauvis_hills_cliff_level) * 10.f, -0.5f, 0.5f);
 
-starting_lake_distance = "distance_from_nearest_point{x = x, y = y, points = starting_lake_positions, maximum_distance = 1024}",
-starting_lake_noise = "quick_multioctave_noise_persistence{x = x,\z
-                                                            y = y,\z
-                                                            seed0 = map_seed,\z
-                                                            seed1 = 14,\z
-                                                            input_scale = 1/8,\z
-                                                            output_scale = 1,\z
-                                                            octaves = 5,\z
-                                                            octave_input_scale_multiplier = 0.5,\z
-                                                            persistence = 0.75}"
+    return 0.1f * nauvis_hills + 0.8f * nauvis_plateaus;
+}
 
-  {
-    type = "noise-function",
-    name = "quick_multioctave_noise_persistence",
-    parameters = {"x", "y", "seed0", "seed1", "input_scale", "output_scale", "octaves", "octave_input_scale_multiplier", "persistence"},
-    expression = "quick_multioctave_noise{x = x,\z
-                                          y = y,\z
-                                          seed0 = seed0,\z
-                                          seed1 = seed1,\z
-                                          input_scale = input_scale * octave_input_scale_multiplier ^ (octaves - 1),\z
-                                          output_scale = output_scale * 2 ^ (octaves - 1),\z
-                                          octaves = octaves,\z
-                                          octave_output_scale_multiplier = persistence,\z
-                                          octave_input_scale_multiplier = 1 / octave_input_scale_multiplier}"
-  },
+float Noise::_elevation_nauvis_function(const MapGenSettings&, const NoisePrecompute& precompute, float x, float y, float added_cliff_elevation) const {
+    const float distance = std::sqrtf(x*x + y*y);
+    const float dx = x - _starter_lake.first;
+    const float dy = y - _starter_lake.second;
+    const float starting_lake_distance = std::min(std::sqrt(dx*dx + dy*dy), 1024.f);
 
-  {
-    type = "noise-function",
-    name = "make_0_12like_lakes",
-    parameters = {"x", "y", "bias", "terrain_octaves", "segmentation_multiplier"},
-    expression = "max(bias + variable_persistence_multioctave_noise{x = x,\z
-                                                                    y = y,\z
-                                                                    seed0 = map_seed,\z
-                                                                    seed1 = 1,\z
-                                                                    input_scale = input_scale,\z
-                                                                    output_scale = 0.125,\z
-                                                                    offset_x = offset_x,\z
-                                                                    octaves = terrain_octaves,\z
-                                                                    persistence = persistence},\z
-                      20 + water_level - 0.1 * segmentation_multiplier * distance + \z
-                      variable_persistence_multioctave_noise{x = x,\z
-                                                             y = y,\z
-                                                             seed0 = map_seed,\z
-                                                             seed1 = 2,\z
-                                                             input_scale = input_scale,\z
-                                                             output_scale = 0.125,\z
-                                                             offset_x = offset_x,\z
-                                                             octaves = 6,\z
-                                                             persistence = persistence})",
-    local_expressions =
-    {
-      input_scale = "segmentation_multiplier / 2",
-      offset_x = "10000 / segmentation_multiplier",
-      persistence = "clamp(amplitude_corrected_multioctave_noise{x = x,\z
-                                                                 y = y,\z
-                                                                 seed0 = map_seed,\z
-                                                                 seed1 = 1,\z
-                                                                 octaves = terrain_octaves - 2,\z
-                                                                 input_scale = input_scale,\z
-                                                                 offset_x = offset_x,\z
-                                                                 persistence = 0.7,\z
-                                                                 amplitude = 0.5} + 0.3,\z
-                          0.1, 0.9)"
-    }
+    const float starting_macro_multiplier = std::clamp(distance * precompute.get_starting_macro_multiplier_base(), 0.f, 1.f);
 
-  {
-    type = "noise-function",
-    name = "amplitude_corrected_multioctave_noise",
-    parameters = {"x", "y", "seed0", "seed1", "input_scale", "offset_x", "octaves", "persistence", "amplitude"},
-    expression = "variable_persistence_multioctave_noise{x = x,\z
-                                                         y = y,\z
-                                                         seed0 = seed0,\z
-                                                         seed1 = seed1,\z
-                                                         input_scale = input_scale,\z
-                                                         output_scale = (1 - persistence) / 2 ^ octaves / (1 - persistence ^ octaves) * amplitude,\z
-                                                         offset_x = offset_x,\z
-                                                         octaves = octaves,\z
-                                                         persistence = persistence}"
-  },
-*/
+    const float nauvis_bridge_billows = std::abs(_multioctave_noise_internal(
+        _custom_offset_permutations[(size_t)Seed0CustomOffsets::NAUVIS_BRIDGE_BILLOWS],
+        (uint8_t)(SEED0_CUSTOM_OFFSETS[(size_t)Seed0CustomOffsets::NAUVIS_BRIDGE_BILLOWS] % 256),
+        x, y,
+        0.5f, 4,
+        precompute.get_nauvis_bridge_billows_input_scale(), 1.f,
+        0.f, 0.f
+    ));
 
-float Noise::make_0_12like_lakes(const MapGenSettings& settings, const NoisePrecompute& precompute, float x, float y) const {
+    const float nauvis_persistance = std::clamp(_persistence_multioctave_noise_internal(
+        _custom_offset_permutations[(size_t)Seed0CustomOffsets::NAUVIS_PERSISTANCE],
+        (uint8_t)(SEED0_CUSTOM_OFFSETS[(size_t)Seed0CustomOffsets::NAUVIS_PERSISTANCE] % 256),
+        x, y,
+        0.7f, 5,
+        precompute.get_nauvis_persistance_input_scale(), NAUVIS_PERSISTANCE_OUTPUT_SCALE,
+        precompute.get_nauvis_offset_x(), 0.f
+    ) + 0.55f, 0.5f, 0.65f);
+
+    const float nauvis_detail = _persistence_multioctave_noise_internal(
+        _custom_offset_permutations[(size_t)Seed0CustomOffsets::NAUVIS_DETAIL],
+        (uint8_t)(SEED0_CUSTOM_OFFSETS[(size_t)Seed0CustomOffsets::NAUVIS_DETAIL] % 256),
+        x, y,
+        nauvis_persistance, 5,
+        precompute.get_nauvis_detail_input_scale(), 0.03f,
+        precompute.get_nauvis_offset_x(), 0.f
+    );
+
+    const float nauvis_macro = _multioctave_noise_internal(
+        _custom_offset_permutations[(size_t)Seed0CustomOffsets::NAUVIS_MACRO_1],
+        (uint8_t)(SEED0_CUSTOM_OFFSETS[(size_t)Seed0CustomOffsets::NAUVIS_MACRO_1] % 256),
+        x, y,
+        0.6f, 2,
+        precompute.get_nauvis_macro_input_scale(), 1.f,
+        0.f, 0.f
+    ) * std::max(0.f, _multioctave_noise_internal(
+        _custom_offset_permutations[(size_t)Seed0CustomOffsets::NAUVIS_MACRO_2],
+        (uint8_t)(SEED0_CUSTOM_OFFSETS[(size_t)Seed0CustomOffsets::NAUVIS_MACRO_2] % 256),
+        x, y,
+        0.6f, 1,
+        precompute.get_nauvis_macro_input_scale(), 1.f,
+        0.f, 0.f
+    ));
+
+    const float starting_lake_noise = quick_multioctave_noise(
+        14,
+        x, y,
+        4,
+        STARTING_LAKE_NOISE_INPUT_SCALE, STARTING_LAKE_NOISE_OUTPUT_SCALE,
+        0.f, 0.f,
+        2.f, 0.68f, 1
+    );
+
+    const float nauvis_bridges = 1.f - 0.1f * nauvis_bridge_billows - 0.9f * std::max(0.f, -0.1f + nauvis_bridge_billows);
+
+    const float nauvis_main = 
+        ELEVATION_MAGNITUDE * (
+            Math::lerp(
+                0.5f * added_cliff_elevation - 0.6f,
+                1.9f * added_cliff_elevation + 1.6f,
+                0.1f + 0.5f * nauvis_bridges
+            ) +
+            0.25f * nauvis_detail +
+            3.f * nauvis_macro * starting_macro_multiplier
+        );
+
+    const float starting_island = nauvis_main + ELEVATION_MAGNITUDE * (2.5f - distance * precompute.get_starting_island_multiplier());
+    const float starting_lake = ELEVATION_MAGNITUDE * (-3.f + (starting_lake_distance + starting_lake_noise) / 8.f) / 8.f;
+    
+    const float wlc_elevation = std::max(nauvis_main - precompute.get_water_level() * WLC_AMPLITUDE, starting_island);
+
+    return std::min(wlc_elevation, starting_lake);
+}
+
+float Noise::elevation(const MapGenSettings& settings, const NoisePrecompute& precompute, float x, float y) const {
+    assert(_elevation2_0_precompute);
+    const float nauvis_hills_plateaus = _nauvis_hills_plateaus(settings, precompute, x, y);
+    return _elevation_nauvis_function(settings, precompute, x, y, nauvis_hills_plateaus);
+}
+
+float Noise::_make_0_12like_lakes(const MapGenSettings& settings, const NoisePrecompute& precompute, float x, float y) const {
     const float input_scale = precompute.get_make_0_12like_lakes_input_scale();
     const float offset_x = precompute.get_make_0_12like_lakes_offset_x();
     
@@ -345,9 +441,9 @@ float Noise::make_0_12like_lakes(const MapGenSettings& settings, const NoisePrec
     return std::max(a, b);
 }
 
-float Noise::finish_elevation(const MapGenSettings& settings, const NoisePrecompute& precompute, float elevation, float x, float y) const {
-    const float dx = x - std::floor(_starter_lake.first);
-    const float dy = y - std::floor(_starter_lake.second);
+float Noise::_finish_elevation(const MapGenSettings& settings, const NoisePrecompute& precompute, float elevation, float x, float y) const {
+    const float dx = x - _starter_lake.first;
+    const float dy = y - _starter_lake.second;
     const float starting_lake_distance = std::min(std::sqrt(dx*dx + dy*dy), 1024.f);
 
     const float starting_lake_noise = quick_multioctave_noise(
@@ -365,57 +461,57 @@ float Noise::finish_elevation(const MapGenSettings& settings, const NoisePrecomp
         -1 + (starting_lake_distance + starting_lake_noise) / 16.f,
         std::max(2.f, 2.f + starting_lake_distance / 16.f + starting_lake_noise / 2.f)
     );
-    
+
     return std::min(a, b);
 }
 
 float Noise::elevation_lakes(const MapGenSettings& settings, const NoisePrecompute& precompute, float x, float y) const {
-    float lakes = make_0_12like_lakes(settings, precompute, x, y);
-    return finish_elevation(settings, precompute, lakes, x, y);
+    float lakes = _make_0_12like_lakes(settings, precompute, x, y);
+    return _finish_elevation(settings, precompute, lakes, x, y);
 }
 
 template<PatchType Type>
 static std::array<Candidate, NB_CANDIDATES[Type]> generate_candidates(
-    NoiseCache& cache, const uint32_t seed0
+    NoiseCache& cache, const uint32_t seed0, int32_t region_x, int32_t region_y
 ) {
+    static_assert(Type == STARTER || Type == REGULAR);
+
     std::array<Candidate, NB_CANDIDATES[Type]> candidates;
 
     const uint32_t id = cache.get_id();
     auto& chunks = cache.get_chunks<Type>();
-    constexpr auto chunk_count = CHUNK_COUNTS[Type];
-    constexpr auto chunk_size = CHUNK_SIZES[Type];
+    constexpr auto CHUNK_COUNT = CHUNK_COUNTS[Type];
+    constexpr auto CHUNK_SIZE = CHUNK_SIZES[Type];
 
-    // const uint32_t seed = (region_y * 0x1ee3 + region_x * 0x1eef + seed1 * 0x1ef7 + 0x3fbe2c) ^ seed0;
-    constexpr uint32_t seed_base = SEEDS1[Type] * 0x1ef7 + 0x3fbe2c;
-    const uint32_t seed = seed_base ^ seed0;
+    const uint32_t seed = (region_y * 0x1ee3 + region_x * 0x1eef + SEEDS1[Type] * 0x1ef7 + 0x3fbe2c) ^ seed0;
     Random random(seed);
 
     constexpr float c_suggested_distance2 = SUGGESTED_DISTANCES[Type] * SUGGESTED_DISTANCES[Type];
     float suggested_distance2 = c_suggested_distance2;
 
-    constexpr int32_t half_region_size = REGION_SIZES[Type] / 2;
-    // const int32_t offset_x = RegionSize * region_x - half_region_size;
-    // const int32_t offset_y = RegionSize * region_y - half_region_size;
+    constexpr int32_t HALF_REGION_SIZE = REGION_SIZES[Type] / 2;
+    const int32_t offset_x = REGION_SIZES[Type] * region_x - HALF_REGION_SIZE;
+    const int32_t offset_y = REGION_SIZES[Type] * region_y - HALF_REGION_SIZE;
 
     int i = 0;
     while (i < NB_CANDIDATES[Type]) {
         int32_t x = random.random() % REGION_SIZES[Type];
         int32_t y = random.random() % REGION_SIZES[Type];
-        const int32_t chunk_x = x / chunk_size;
-        const int32_t chunk_y = y / chunk_size;
+        const int32_t chunk_x = x / CHUNK_SIZE;
+        const int32_t chunk_y = y / CHUNK_SIZE;
         
-        x -= half_region_size;
-        y -= half_region_size;
+        x += offset_x;
+        y += offset_y;
 
         const int other_chunk_y_min = std::max(0, chunk_y - 1);
-        const int other_chunk_x_max = std::min(chunk_count - 1, chunk_x + 1);
-        const int other_chunk_y_max = std::min(chunk_count - 1, chunk_y + 1);
+        const int other_chunk_x_max = std::min(CHUNK_COUNT - 1, chunk_x + 1);
+        const int other_chunk_y_max = std::min(CHUNK_COUNT - 1, chunk_y + 1);
 
         bool valid = true;
 
         for (int other_chunk_x = std::max(0, chunk_x - 1); other_chunk_x <= other_chunk_x_max; other_chunk_x++) {
             for (int other_chunk_y = other_chunk_y_min; other_chunk_y <= other_chunk_y_max; other_chunk_y++) {
-                auto& other_array = chunks[other_chunk_x + other_chunk_y * chunk_count];
+                auto& other_array = chunks[other_chunk_x + other_chunk_y * CHUNK_COUNT];
                 if (other_array.id != id) continue;
 
                 for (auto& other : other_array) {
@@ -436,7 +532,7 @@ static std::array<Candidate, NB_CANDIDATES[Type]> generate_candidates(
             candidate.x = x;
             candidate.y = y;
 
-            auto& other_array = chunks[chunk_x + chunk_y * chunk_count];
+            auto& other_array = chunks[chunk_x + chunk_y * CHUNK_COUNT];
             if (other_array.id != id) {
                 other_array.clear();
                 other_array.id = id;
@@ -449,12 +545,33 @@ static std::array<Candidate, NB_CANDIDATES[Type]> generate_candidates(
     return candidates;
 }
 
-Patches starter_patches(const MapGenSettings& settings, const NoisePrecompute& precompute, const Noise& noise, NoiseCache& cache, const uint32_t seed0) {
+static std::array<Candidate, NB_CANDIDATES[BITER]> generate_candidates_biters(const uint32_t seed0, int32_t region_x, int32_t region_y) {
+    std::array<Candidate, NB_CANDIDATES[BITER]> candidates;
+
+    const uint32_t seed = (region_y * 0x1ee3 + region_x * 0x1eef + SEEDS1[BITER] * 0x1ef7 + 0x3fbe2c) ^ seed0;
+    Random random(seed);
+
+    constexpr int32_t HALF_REGION_SIZE = REGION_SIZES[BITER] / 2;
+    const int32_t offset_x = REGION_SIZES[BITER] * region_x - HALF_REGION_SIZE;
+    const int32_t offset_y = REGION_SIZES[BITER] * region_y - HALF_REGION_SIZE;
+
+    for (auto& c : candidates) {
+        c.x = random.random() % REGION_SIZES[BITER] + offset_x;
+        c.y = random.random() % REGION_SIZES[BITER] + offset_y;
+    }
+
+    return candidates;
+}
+
+Patches starter_patches(
+    const MapGenSettings& settings, const NoisePrecompute& precompute, const Noise& noise, NoiseCache& cache,
+    const uint32_t seed0, const int32_t region_x, const int32_t region_y
+) {
     Patches patches;
 
-    auto candidates = generate_candidates<STARTER>(cache, seed0);
+    auto candidates = generate_candidates<STARTER>(cache, seed0, region_x, region_y);
 
-    for (ResourceType type = IRON; type < NB_RESOURCE_TYPE; type++) {
+    for (ResourceType type = IRON; type <= STONE; type++) {
         const auto offset = OFFSETS[type];
 
         const auto& penalties = precompute.get_starter_penalties()[candidates[offset].x+120 + (candidates[offset].y+120)*240];
@@ -499,8 +616,7 @@ Patches starter_patches(const MapGenSettings& settings, const NoisePrecompute& p
 
         const float frac = 1 - nb_patches_ceil + nb_patches;
         const float last_quantity = quantity * frac;
-        // const float last_radius = radius * frac;
-        const float last_radius = radius * std::cbrt(last_quantity / quantity);
+        const float last_radius = radius * Math::powf(last_quantity / quantity, 1.f/3);
         const auto &candidate = *candidates_ptr[last];
         patches[type].insert(candidate.x, candidate.y, last_radius, last_quantity);
     }
@@ -531,10 +647,10 @@ static float regular_radius(const float rq_factor, const float quantity) {
     return std::min(32.f, rq_factor * std::cbrtf(quantity));
 }
 
-Patches regular_patches(const NoisePrecompute& precompute, NoiseCache& cache, const uint32_t seed0) {
+Patches regular_patches(const NoisePrecompute& precompute, NoiseCache& cache, const uint32_t seed0, const int32_t region_x, const int32_t region_y) {
     Patches patches;
 
-    auto candidates = generate_candidates<REGULAR>(cache, seed0);
+    auto candidates = generate_candidates<REGULAR>(cache, seed0, region_x, region_y);
 
     for (ResourceType type = IRON; type < NB_RESOURCE_TYPE; type++) {
         const float base_density = precompute.get_base_regular_densities()[type];
@@ -561,7 +677,7 @@ Patches regular_patches(const NoisePrecompute& precompute, NoiseCache& cache, co
 
         for (int i = 0; i < nb_spots; i++) {
             const auto &candidate = candidates[i*SPANS[REGULAR] + offset];
-            const float quantity = regular_quantity(base_quantity, candidate.density, penalties[i + penalties_offset]);
+            const float quantity = regular_quantity(base_quantity, candidate.density, type == OIL ? 1.f : penalties[i + penalties_offset]);
             const float radius = regular_radius(rq_factor, quantity);
 
             patches[type].insert(candidate.x, candidate.y, radius, quantity);
@@ -569,6 +685,45 @@ Patches regular_patches(const NoisePrecompute& precompute, NoiseCache& cache, co
 
             if (total_quantity >= total_density) break;
         }
+    }
+
+    return patches;
+}
+
+PatchArray enemy_bases(const MapGenSettings& settings, const NoisePrecompute&, uint32_t seed, const int32_t region_x, const int32_t region_y) {
+    PatchArray patches;
+
+    auto candidates = generate_candidates_biters(seed, region_x, region_y);
+
+    const float frequency = settings.biter_frequency;
+    const float size = settings.biter_size;
+    const float size_sq = std::sqrt(size);
+
+    float total_density = 0.f;
+
+    for (auto& c : candidates) {
+        float distance = std::sqrtf((float)c.x*c.x + (float)c.y*c.y);
+        float intensity = std::clamp(distance, 0.f, 2400.f) / 325.f;
+
+        c.radius = std::max(0.f, size_sq * (15.f + 4.f * intensity));
+        constexpr float scaled_pi = (float)M_PI / 90.f;
+        c.quantity = scaled_pi * Math::powf(c.radius, 3);
+
+        const float enemy_base_frequency = std::max(0.f, (0.00001f + 0.000003f * intensity) * frequency);
+        const float density = c.quantity * enemy_base_frequency;
+
+        total_density += density;
+    }
+    
+    constexpr float base_density = (float)REGION_SIZES[BITER]*REGION_SIZES[BITER] / NB_CANDIDATES[BITER];
+    total_density = base_density * total_density;
+    float total_quantity = 0.f;
+
+    for (auto& c : candidates) {
+        patches.insert(c.x, c.y, c.radius, c.quantity);
+        total_quantity += c.quantity;
+
+        if (total_quantity >= total_density) break;
     }
 
     return patches;

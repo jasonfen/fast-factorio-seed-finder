@@ -9,6 +9,7 @@ add_library(core
     random.hpp
     gradients.cpp
     gradients.hpp
+    math.hpp
 )
 
 include(FetchContent)

@@ -16,12 +16,14 @@ enum ResourceType {
     COPPER,
     COAL,
     STONE,
+    OIL,
     NB_RESOURCE_TYPE
 };
 
 enum PatchType {
     STARTER,
     REGULAR,
+    BITER,
     NB_PATCH_TYPE
 };
 
@@ -42,6 +44,9 @@ struct MapGenSettings {
 
     float water_scale = 1.f;
     float water_coverage = 1.f;
+
+    float biter_frequency = 1.f;
+    float biter_size = 1.f;
 };
 
 constexpr std::string thousands_separator(std::integral auto n) {
