@@ -101,7 +101,7 @@ public:
     float elevation_lakes(const MapGenSettings&, const NoisePrecompute&, float x, float y) const;
     float elevation_island(const MapGenSettings&, const NoisePrecompute&, float x, float y) const;
 
-public:
+private:
     struct Permutations {
         std::array<uint8_t, 256> p1;
         std::array<uint8_t, 256> p2;
