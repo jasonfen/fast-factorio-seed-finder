@@ -75,7 +75,7 @@ public:
     }
     /**
      * Same as add_stage but the eval function gets a reference to a custom cache.
-     * The can be of any type and there is one cache per worker, so it does not need
+     * The cache can be of any type and there is one per worker, so it does not need
      * to be thread safe. This cache main use case is if you need some very big array
      * for your eval function, that array should be in the cache, so you don't need
      * to reallocate it every time.
