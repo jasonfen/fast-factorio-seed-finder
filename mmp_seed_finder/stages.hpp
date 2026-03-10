@@ -2,7 +2,7 @@
 
 #include "finder.hpp"
 
-constexpr Finder::StageSettings stage1_settings{
+constexpr Finder<void>::StageSettings stage1_settings{
     .check_twin_seeds = false,
     .seed_nb_to_next_stage = 1000
 };
@@ -13,4 +13,6 @@ struct Stage1Cache {
     Masks masks; 
 };
 
-Finder::EvalResult stage1_eval(const MapGenSettings&, const NoisePrecompute&, NoiseCache&, Finder::SeedScorePair pair, Stage1Cache&);
+Finder<void>::EvalResult stage1_eval(
+    const MapGenSettings&, const NoisePrecompute& precompute, NoiseCache& noise_cache, uint32_t seed, void*, Stage1Cache& cache
+);

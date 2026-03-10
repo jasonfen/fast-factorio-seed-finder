@@ -12,7 +12,7 @@ static constexpr uint8_t QUICK_MULTIOCTAVE_MAX_SEED_OFFSET = 5;
 static constexpr uint8_t MAKE_0_12LIKE_LAKES_PERSISTENCE_SEED1 = 1;
 static constexpr uint8_t MAKE_0_12LIKE_LAKES_BIAS_SEED1A = 1;
 static constexpr uint8_t MAKE_0_12LIKE_LAKES_BIAS_SEED1B = 2;
-static constexpr float MAKE_0_12LIKE_LAKES_BIAS = 20.f;
+static constexpr std::array<float, NB_ELEVATION_TYPE> MAKE_0_12LIKE_LAKES_BIAS = { 0.f, 20.f, -1000.f };
 static constexpr uint32_t TERRAIN_OCTAVES = 8;
 static constexpr uint32_t MAKE_0_12LIKE_LAKES_PERSISTENCE_OCTAVES = TERRAIN_OCTAVES - 2;
 static constexpr float MAKE_0_12LIKE_LAKES_PERSISTENCE_PERSISTENCE = 0.7f;
@@ -54,6 +54,7 @@ enum class Seed0CustomOffsets {
 };
 
 constexpr Seed0CustomOffsets& operator++(Seed0CustomOffsets& type) {
+    assert(type < Seed0CustomOffsets::NB);
     return type = (Seed0CustomOffsets)(1 + ((int)type));
 }
 

@@ -24,12 +24,12 @@ constexpr int32_t MAX_COAL_STONE_DISTANCE = 200;
 
 constexpr int32_t MAX_PATCH_DISTANCE_FROM_SPAWN = 512;
 
-static constexpr int32_t chebyshev_length(int32_t x, int32_t y) {
-    return std::max(std::abs(x), std::abs(y));
+static constexpr int32_t chebyshev_length(PositionI32 pos) {
+    return std::max(std::abs(pos.x), std::abs(pos.y));
 }
 
-static constexpr int32_t chebyshev_distance(int32_t x1, int32_t y1, int32_t x2, int32_t y2) {
-    return chebyshev_length(x1 - x2, y1 - y2);
+static constexpr int32_t chebyshev_distance(PositionI32 a, PositionI32 b) {
+    return chebyshev_length(a - b);
 }
 
 // Merges close patches and removes too small ones
@@ -40,7 +40,7 @@ static void transform_patches(PatchArray& patches, float min_area, float max_are
         auto& p1 = patches[i];
         if (p1.radius == 0) continue;
         float total_area = p1.radius*p1.radius * (float)M_PI;
-        std::pair<int32_t, int32_t> average_position = {p1.x, p1.y};
+        PositionI32 average_position = p1.pos;
         int32_t count = 1;
 
         if (total_area < min_area) {
@@ -48,14 +48,11 @@ static void transform_patches(PatchArray& patches, float min_area, float max_are
                 auto& p2 = patches[j];
                 float p2_area = p2.radius*p2.radius * (float)M_PI;
                 if (p2.radius == 0 || p2_area >= min_area) continue;
-    
-                int32_t dx = p1.x - p2.x;
-                int32_t dy = p1.y - p2.y;
+
                 float radius_sum = p1.radius + p2.radius + 40;
-                if (dx*dx + dy*dy <= radius_sum*radius_sum) {
+                if (PositionI32::distance_2(p1.pos, p2.pos) <= radius_sum*radius_sum) {
                     total_area += p2_area;
-                    average_position.first += p2.x;
-                    average_position.second += p2.y;
+                    average_position += p2.pos;
                     p2.radius = 0;
                     count++;
                 }
@@ -63,14 +60,14 @@ static void transform_patches(PatchArray& patches, float min_area, float max_are
         }
 
         // Patch.radius is used as area instead
-        temp.insert(average_position.first / count, average_position.second / count, total_area, 0);
+        temp.insert(average_position / count, total_area, 0);
     }
 
     patches.clear();
 
     for (const auto& p : temp) {
-        if (chebyshev_length(p.x, p.y) < MAX_PATCH_DISTANCE_FROM_SPAWN && p.radius >= min_area) {
-            patches.insert(p.x, p.y, p.radius, p.quantity);
+        if (chebyshev_length(p.pos) < MAX_PATCH_DISTANCE_FROM_SPAWN && p.radius >= min_area) {
+            patches.insert(p.pos, p.radius, p.quantity);
         }
     }
 }
@@ -85,7 +82,7 @@ static std::array<bool, REGULAR_MAX_NB_SPOTS*REGULAR_MAX_NB_SPOTS> make_pairs(co
 
         for (size_t j = 0; j < size2; j++) {
             const auto& p2 = patches2[j];
-            out[idx + j] = chebyshev_distance(p1.x, p1.y, p2.x, p2.y) < max_distance;
+            out[idx + j] = chebyshev_distance(p1.pos, p2.pos) < max_distance;
         }
     }
 
@@ -119,9 +116,10 @@ void find_best_masks(
     find_best_masks(masks, mask_count, i + 1, current_masks, count, best);
 }
 
-Finder::EvalResult stage1_eval(const MapGenSettings&, const NoisePrecompute& precompute, NoiseCache& noise_cache, Finder::SeedScorePair pair, Stage1Cache& cache) {
-    uint32_t seed = pair.first;
-    Patches patches = regular_patches(precompute, noise_cache, seed, 0, 0);
+Finder<void>::EvalResult stage1_eval(
+    const MapGenSettings&, const NoisePrecompute& precompute, NoiseCache& noise_cache, uint32_t seed, void*, Stage1Cache& cache
+) {
+    Patches patches = regular_patches(precompute, noise_cache, seed, { 0, 0 });
     transform_patches(patches[IRON], MIN_IRON_AREA, MAX_IRON_AREA);
     transform_patches(patches[COPPER], MIN_COPPER_AREA, MAX_COPPER_AREA);
     transform_patches(patches[COAL], MIN_COAL_AREA, MAX_COAL_AREA);

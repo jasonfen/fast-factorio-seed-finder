@@ -1,6 +1,7 @@
 add_library(core
-    finder.cpp
     finder.hpp
+    algorithm.cpp
+    algorithm.hpp
     noise.cpp
     noise.hpp
     constants.hpp

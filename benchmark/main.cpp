@@ -12,7 +12,7 @@ void benchmark(int n) {
     for (int i = 0; i < n; i++) {
         for (float x = 0; x < 1000.f; x++) {
             for (float y = 0; y < 1000.f; y++) {
-                sum += noise.noise(22, x, y, 0.01f, 10.f, 300.f, 200.f);
+                sum += noise.noise(22, { x, y }, 0.01f, 10.f, 300.f, 200.f);
             }
         }
     }
@@ -38,7 +38,7 @@ void benchmark_2(int n) {
 
     start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < n; i++) {
-        auto patches = regular_patches(precompute, cache, i, 0, 0);
+        auto patches = regular_patches(precompute, cache, i, { 0, 0 });
         for (const auto& patch : patches[1]) {
             sum += patch.radius;
         }
@@ -64,7 +64,7 @@ void benchmark_3(int n) {
     start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < n; i++) {
         Noise noise(i, true, false);
-        auto patches = starter_patches(settings, precompute, noise, cache, i, 0, 0);
+        auto patches = starter_patches(settings, precompute, noise, cache, i, { 0, 0 });
     }
     end = std::chrono::high_resolution_clock::now();
 

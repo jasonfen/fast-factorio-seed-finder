@@ -28,21 +28,24 @@ int main(int argc, char* argv[]) {
         settings.sizes[t] = 6.f;
         settings.richness[t] = 6.f;
     }
+    settings.elevation_type = ELEVATION_ISLAND;
+    settings.water_scale = 1.f/2;
+    settings.water_coverage = 2;
     NoisePrecompute precompute(settings);
     Noise noise(seed0, true, true);
     NoiseCache cache;
 
-    auto regular = regular_patches(precompute, cache, seed0, 0, 0);
-    auto starter = starter_patches(settings, precompute, noise, cache, seed0, 0, 0);
+    auto regular = regular_patches(precompute, cache, seed0, { 0, 0 });
+    auto starter = starter_patches(settings, precompute, noise, cache, seed0, { 0, 0 });
     std::array<PatchArray, 9> biters;
     for (int i = 0; i < 9; i++) {
-        biters[i] = enemy_bases(settings, precompute, seed0, i % 3 - 1, i / 3 - 1);
+        biters[i] = enemy_bases(settings, precompute, seed0, { i % 3 - 1, i / 3 - 1 });
     }
 
     // Output buffer: RGB bytes
     std::vector<unsigned char> img(IMG_SIZE * IMG_SIZE * 3, 255);
 
-    const int shift = IMG_SIZE / 2.f ;
+    const int shift = IMG_SIZE / 2 ;
 
     for (int py = 0; py < IMG_SIZE; ++py) {
         for (int px = 0; px < IMG_SIZE; ++px) {
@@ -52,7 +55,7 @@ int main(int argc, char* argv[]) {
             size_t idx = (py * IMG_SIZE + px) * 3;
             size_t biter_idx = ((size_t)wx + 256 + 512) / 512 + ((size_t)wy + 256 + 512) / 512 * 3;
 
-            if (noise.elevation(settings, precompute, wx, wy) < 0) {
+            if (noise.is_tile_water(settings, precompute, { wx, wy })) {
                 img[idx+0] = 51; img[idx+1] = 83; img[idx+2] = 95;
                 continue;
             }
@@ -65,9 +68,7 @@ int main(int argc, char* argv[]) {
                     float best_for_type = -std::numeric_limits<float>::infinity();
                     for (auto it = patches[type].begin(); it != patches[type].end(); ++it) {
                         const Patch &p = *it;
-                        float dx = wx - (float)p.x;
-                        float dy = wy - (float)p.y;
-                        float dist = std::sqrtf(dx*dx + dy*dy);
+                        float dist = PositionF32::distance({ wx, wy }, p.pos);
     
                         float slope = 0.f;
                         if (p.radius > 0.f) slope = 3.f * p.quantity / float(M_PI * p.radius * p.radius * p.radius);
@@ -100,9 +101,7 @@ int main(int argc, char* argv[]) {
             }
 
             for (const auto& p : biters[biter_idx]) {
-                float dx = wx - (float)p.x;
-                float dy = wy - (float)p.y;
-                float dist = std::sqrtf(dx*dx + dy*dy);
+                float dist = PositionF32::distance({ wx, wy }, p.pos);
 
                 float slope = 0.f;
                 if (p.radius > 0.f) slope = 3.f * p.quantity / float(M_PI * p.radius * p.radius * p.radius);

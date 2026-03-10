@@ -10,6 +10,7 @@
 #include <concepts>
 #include <string>
 #include <algorithm>
+#include <cassert>
 
 enum ResourceType {
     IRON,
@@ -28,6 +29,7 @@ enum PatchType {
 };
 
 constexpr ResourceType& operator++(ResourceType& type) {
+    assert(type < NB_RESOURCE_TYPE);
     return type = (ResourceType)(1 + ((int)type));
 }
 
@@ -37,13 +39,32 @@ constexpr ResourceType operator++(ResourceType& type, int) {
     return tmp;
 }
 
+enum ElevationType {
+    ELEVATION_2_0,
+    ELEVATION_1_1,
+    ELEVATION_ISLAND,
+    NB_ELEVATION_TYPE   
+};
+
+constexpr ElevationType& operator++(ElevationType& type) {
+    assert(type < NB_ELEVATION_TYPE);
+    return type = (ElevationType)(1 + ((int)type));
+}
+
+constexpr ElevationType operator++(ElevationType& type, int) {
+    ElevationType tmp(type);
+    ++type;
+    return tmp;
+}
+
 struct MapGenSettings {
     std::array<float, NB_RESOURCE_TYPE> frequencies{ 1.f, 1.f, 1.f, 1.f };
     std::array<float, NB_RESOURCE_TYPE> sizes{ 1.f, 1.f, 1.f, 1.f };
     std::array<float, NB_RESOURCE_TYPE> richness{ 1.f, 1.f, 1.f, 1.f };
 
-    float water_scale = 1.f;
-    float water_coverage = 1.f;
+    ElevationType elevation_type = ELEVATION_2_0;
+    float water_scale = 1.f;    // inverse of control:water:frequency
+    float water_coverage = 1.f; // same as control:water:size
 
     float biter_frequency = 1.f;
     float biter_size = 1.f;
@@ -158,3 +179,270 @@ private:
     std::priority_queue<T, std::vector<T>, Compare> _heap;
     mutable std::mutex _mutex;
 };
+
+enum Direction {
+    EAST,
+    SOUTH,
+    WEST,
+    NORTH,
+    NB_DIRECTIONS
+};
+
+constexpr Direction operator-(Direction direction) {
+    return (Direction)(((int)direction + 2) % NB_DIRECTIONS);
+}
+
+constexpr Direction& operator++(Direction& direction) {
+    return direction = (Direction)(((int)direction + 1) % NB_DIRECTIONS);
+}
+
+constexpr Direction operator++(Direction& direction, int) {
+    Direction tmp(direction);
+    ++direction;
+    return tmp;
+}
+
+constexpr Direction operator+(Direction& a, Direction& b) {
+    return (Direction)(((int)a + (int)b) % NB_DIRECTIONS);
+}
+
+constexpr Direction& operator--(Direction& direction) {
+    return direction = (Direction)(((int)direction - 1 + (int)NB_DIRECTIONS) % NB_DIRECTIONS);
+}
+
+constexpr Direction operator--(Direction& direction, int) {
+    Direction tmp(direction);
+    --direction;
+    return tmp;
+}
+
+constexpr Direction operator-(Direction& a, Direction& b) {
+    return (Direction)(((int)a - (int)b + (int)NB_DIRECTIONS) % NB_DIRECTIONS);
+}
+
+// Used to iterate over directions
+constexpr Direction next_direction(Direction direction) {
+    return (Direction)(((int)direction + 1));
+}
+
+template<typename T> requires (std::is_arithmetic_v<T>)
+struct Position {
+    T x;
+    T y;
+
+    constexpr Position() : x(0), y(0) {}
+    constexpr Position(T x_, T y_) : x(x_), y(y_) {}
+    constexpr Position(Direction direction) {
+        switch (direction) {
+            case EAST: x = 1; y = 0; break;
+            case SOUTH: x = 0; y = 1; break;
+            case WEST: x = -1; y = 0; break;
+            case NORTH: x = 0; y = -1; break;
+            default: throw std::runtime_error("Invalid direction value.");
+        }
+    }
+
+    template<typename K> requires (std::is_arithmetic_v<K>)
+    constexpr operator Position<K>() const {
+        return Position<K>((K)x, (K)y);
+    }
+
+    constexpr Position operator-() const {
+        return { -x, -y };
+    }
+
+    constexpr Position& operator+=(Position other) {
+        x += other.x;
+        y += other.y;
+        return *this;
+    }
+
+    friend constexpr Position operator+(Position a, Position b) {
+        a += b;
+        return a;
+    }
+
+    constexpr Position& operator-=(Position other) {
+        x -= other.x;
+        y -= other.y;
+        return *this;
+    }
+
+    friend constexpr Position operator-(Position a, Position b) {
+        a -= b;
+        return a;
+    }
+
+    constexpr Position& operator*=(T other) {
+        x *= other;
+        y *= other;
+        return *this;
+    }
+
+    friend constexpr Position operator*(Position a, T b) {
+        a *= b;
+        return a;
+    }
+
+    constexpr Position& operator/=(T other) {
+        x /= other;
+        y /= other;
+        return *this;
+    }
+
+    friend constexpr Position operator/(Position a, T b) {
+        a /= b;
+        return a;
+    }
+
+    friend constexpr bool operator==(Position a, Position b) {
+        return a.x == b.x && a.y == b.y;
+    }
+
+    friend constexpr bool operator!=(Position a, Position b) {
+        return !(a == b);
+    }
+
+    constexpr T length_2() const {
+        return x*x + y*y;
+    }
+
+    static constexpr T distance_2(Position a, Position b) {
+        return (a - b).length_2();
+    }
+
+    auto length() const {
+        return std::sqrt((float)x*x + (float)y*y);
+    }
+
+    static constexpr auto distance(Position a, Position b) {
+        return (a - b).length();
+    }
+
+    // direction EAST is means no rotation, south means 90 degrees clockwise
+    constexpr Position rotated(Direction direction) const {
+        switch (direction) {
+            case EAST: return *this;
+            case SOUTH: return { -y, x };
+            case WEST: return { -x, -y };
+            case NORTH: return { y, -x };
+        }
+    }
+
+    constexpr Position abs() const {
+        return { std::abs(x), std::abs(y) };
+    }
+
+    static constexpr Position min(Position a, Position b) {
+        return { std::min(a.x, b.x), std::min(a.y, b.y) };
+    }
+
+    static constexpr Position max(Position a, Position b) {
+        return { std::max(a.x, b.x), std::max(a.y, b.y) };
+    }
+};
+
+using PositionI16 = Position<int16_t>;
+using PositionI32 = Position<int32_t>;
+using PositionF32 = Position<float>;
+
+template<typename T> requires (std::is_arithmetic_v<T>)
+struct Box {
+    Position<T> left_top;
+    Position<T> right_bottom;
+
+    constexpr Box() = default;
+    constexpr Box(Position<T> left_top_, Position<T> right_bottom_) : left_top(left_top_), right_bottom(right_bottom_) {}
+    constexpr Box(T x1, T y1, T x2, T y2) : left_top(x1, y1), right_bottom(x2, y2) {}
+    constexpr Box(Position<T> center, T radius) {
+        Position<T> shift(radius, radius);
+        left_top = center - shift;
+        right_bottom = center + shift;
+    }
+
+    template<typename K> requires (std::is_arithmetic_v<K>)
+    constexpr operator Box<K>() const {
+        return Box<K>(Position<K>(left_top), Position<K>(right_bottom));
+    }
+
+    constexpr Position<T> get_left_bottom() const {
+        return { left_top.x, right_bottom.y };
+    }
+
+    constexpr Position<T> get_right_top() const {
+        return { right_bottom.x, left_top.y };
+    }
+
+    constexpr Box &operator+=(Position<T> pos) {
+        left_top += pos;
+        right_bottom += pos;
+        return *this;
+    }
+
+    friend constexpr Box operator+(Box box, Position<T> pos) {
+        box += pos;
+        return box;
+    }
+
+    constexpr Box &operator-=(Position<T> pos) {
+        left_top -= pos;
+        right_bottom -= pos;
+        return *this;
+    }
+
+    friend constexpr Box operator-(Box box, Position<T> pos) {
+        box -= pos;
+        return box;
+    }
+
+    constexpr Position<T> center() const {
+        return (left_top + right_bottom) / 2;
+    }
+
+    constexpr Box rotated(Direction direction) const {
+        const T x1 = left_top.x, y1 = left_top.y, x2 = right_bottom.x, y2 = right_bottom.y;
+        switch (direction) {
+            case Direction::EAST: return *this;
+            case Direction::SOUTH: return Box(-y2, x1, -y1, x2);
+            case Direction::WEST: return Box(-x2, -y2, -x1, -y1);
+            case Direction::NORTH: return Box(y1, -x2, y2, -x1);
+            default: throw std::runtime_error("Invalid direction value.");
+        }
+    }
+
+    constexpr Box rotated_counter_clockwise(Direction direction) const {
+        const T x1 = left_top.x, y1 = left_top.y, x2 = right_bottom.x, y2 = right_bottom.y;
+        switch (direction) {
+            case Direction::EAST: return *this;
+            case Direction::SOUTH: return Box(y1, -x2, y2, -x1);
+            case Direction::WEST: return Box(-x2, -y2, -x1, -y1);
+            case Direction::NORTH: return Box(-y2, x1, -y1, x2);
+            default: throw std::runtime_error("Invalid direction value.");
+        }
+    }
+
+    constexpr bool contains(Position<T> pos) const {
+        return pos.x > left_top.x && pos.y > left_top.y && pos.x < right_bottom.x && pos.y < right_bottom.y;
+    }
+
+    static constexpr Box combine(Box a, Box b) {
+        return Box(
+            Position<T>::min(a.left_top, b.left_top),
+            Position<T>::max(a.right_bottom, b.right_bottom)
+        );
+    }
+
+    constexpr T side_position(Direction direction) const {
+        switch (direction) {
+            case EAST: return right_bottom.x;
+            case SOUTH: return right_bottom.y;
+            case WEST: return left_top.x;
+            case NORTH: return left_top.y;
+            default: throw std::runtime_error("Invalid direction value.");
+        }
+    }
+};
+
+using BoxI16 = Box<int16_t>;
+using BoxI32 = Box<int32_t>;
+using BoxF32 = Box<float>;

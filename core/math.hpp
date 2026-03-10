@@ -7,6 +7,12 @@
 
 namespace Math {
 
+// return -1 for negative numbers, 0 for 0 and +1 for positive numbers
+template<typename T> requires (std::is_arithmetic_v<T>)
+constexpr T sign(T x) {
+    return (x > 0) - (x < 0);
+}
+
 constexpr float lerp(float a, float b, float alpha) {
     return a + (b - a) * alpha;
 }
