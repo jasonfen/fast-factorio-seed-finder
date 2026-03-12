@@ -342,7 +342,6 @@ struct Position {
     }
 };
 
-using PositionI16 = Position<int16_t>;
 using PositionI32 = Position<int32_t>;
 using PositionF32 = Position<float>;
 
@@ -399,6 +398,10 @@ struct Box {
         return (left_top + right_bottom) / 2;
     }
 
+    constexpr T area() const {
+        return (T)std::abs((left_top.x - right_bottom.x) * (left_top.y - right_bottom.y));
+    }
+
     constexpr Box rotated(Direction direction) const {
         const T x1 = left_top.x, y1 = left_top.y, x2 = right_bottom.x, y2 = right_bottom.y;
         switch (direction) {
@@ -441,8 +444,18 @@ struct Box {
             default: throw std::runtime_error("Invalid direction value.");
         }
     }
+
+    inline T distance_2(Position<T> point) const {
+        auto x = std::max({left_top.x - point.x, (T)0, point.x - right_bottom.x});
+        auto y = std::max({left_top.y - point.y, (T)0, point.y - right_bottom.y});
+
+        return x*x + y*y;
+    }
+
+    inline float distance(Position<T> point) const {\
+        std::sqrt((float)distance_2(point));
+    }
 };
 
-using BoxI16 = Box<int16_t>;
 using BoxI32 = Box<int32_t>;
 using BoxF32 = Box<float>;

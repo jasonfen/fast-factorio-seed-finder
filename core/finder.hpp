@@ -259,17 +259,26 @@ int Finder<SeedCache>::run(std::string program_name, int argc, char* argv[]) {
             check_twin_seeds = true;
             _twin_seeds_already_checked = true;
         }
+        if (check_twin_seeds) {
+            std::println("Adding twin seeds (increases the number of seeds by 2x)");
+        }
 
         bool check_water_settings = false;
         if (_water_settings_already_checked == false && stage_settings.check_water_settings == true) {
             check_water_settings = true;
             _water_settings_already_checked = true;
         }
+        if (check_water_settings) {
+            std::println("Adding different water settings (increases the number of seeds by {}x)", _water_scales.size() * _water_coverages.size());
+        }
 
         bool check_elevation_types = false;
         if (_elevation_types_already_checked == false && stage_settings.check_elevation_types == true) {
             check_elevation_types = true;
             _elevation_types_already_checked = true;
+        }
+        if (check_elevation_types) {
+            std::println("Adding different elevation types (increases the number of seeds by 3x)");
         }
 
         std::atomic<uint64_t> progress;

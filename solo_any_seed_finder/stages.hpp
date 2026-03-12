@@ -4,11 +4,11 @@
 
 struct SeedCache {
     Direction mixer_direction;
-    BoxI16 mixer_copper_bounding_box;
-    BoxI16 mixer_iron_bounding_box;
-    BoxI16 mixer_coal_bounding_box;
-    BoxI16 mall_iron_bounding_box;
-    float iron_area;
+    BoxI32 mixer_copper_bounding_box;
+    BoxI32 mixer_iron_bounding_box;
+    BoxI32 mixer_coal_bounding_box;
+    PositionI32 mall_boxes_offset;
+    float mall_score;
 };
 
 constexpr Finder<SeedCache>::StageSettings stage1_settings{

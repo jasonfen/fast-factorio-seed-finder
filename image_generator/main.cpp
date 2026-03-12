@@ -5,6 +5,8 @@
 #include <print>
 #include <iostream>
 #include <fstream>
+#include <print>
+#include <argparse/argparse.hpp>
 
 #pragma warning( push, 0 )
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -12,15 +14,43 @@
 #pragma warning( pop )
 
 int main(int argc, char* argv[]) {
-    if (argc <= 1) {
-        std::println("You must specify a seed.");
+    argparse::ArgumentParser program("image_generator");
+
+    program.add_argument("-o", "--output")
+        .help("The path to the output file.")
+        .required()
+        .metavar("PATH");
+
+    program.add_argument("--seed")
+        .help("The seed to generate")
+        .scan<'i', uint32_t>()
+        .metavar("UINT32");
+
+    program.add_argument("--water-scale")
+        .help("The water scale to use.")
+        .default_value(1.f)
+        .scan<'f', float>()
+        .metavar("FLOAT");
+
+    program.add_argument("--water-coverage")
+        .help("The water coverage to use.")
+        .default_value(1.f)
+        .scan<'f', float>()
+        .metavar("FLOAT");
+
+    program.add_argument("--elevation-type")
+        .help("The elevation type to use. Can be '2.0', '1.1' or 'island'.")
+        .default_value(std::string("2.0"))
+        .metavar("STRING");
+
+    try {
+        program.parse_args(argc, argv);
+    }
+    catch (const std::exception& err) {
+        std::cerr << err.what() << std::endl;
+        std::cerr << program;
         return 1;
     }
-
-    uint32_t seed0 = std::stoul(std::string(argv[1]));
-    std::println("seed: {}", seed0);
-
-    constexpr int IMG_SIZE = 896;
 
     MapGenSettings settings;
     for (ResourceType t = IRON; t < NB_RESOURCE_TYPE; ++t) {
@@ -28,9 +58,25 @@ int main(int argc, char* argv[]) {
         settings.sizes[t] = 6.f;
         settings.richness[t] = 6.f;
     }
-    settings.elevation_type = ELEVATION_ISLAND;
-    settings.water_scale = 1.f/2;
-    settings.water_coverage = 2;
+
+    auto out_path = program.get<std::string>("-o");
+    uint32_t seed0 = program.get<uint32_t>("--seed");
+    settings.water_scale = program.get<float>("--water-scale");
+    settings.water_coverage = program.get<float>("--water-coverage");
+
+    std::string elevation_type_str = program.get<std::string>("--elevation-type");
+    if (elevation_type_str == "2.0") {
+        settings.elevation_type = ELEVATION_2_0;
+    } else if (elevation_type_str == "1.1") {
+        settings.elevation_type = ELEVATION_1_1;
+    } else if (elevation_type_str == "island") {
+        settings.elevation_type = ELEVATION_ISLAND;
+    } else {
+        std::println("elevation-type has to be '2.0', '1.1' or 'island'.");
+        return 1;
+    }
+
+    constexpr int IMG_SIZE = 896;
     NoisePrecompute precompute(settings);
     Noise noise(seed0, true, true);
     NoiseCache cache;
@@ -114,8 +160,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    stbi_write_png("./img.png", IMG_SIZE, IMG_SIZE, 3, img.data(), 3*IMG_SIZE*sizeof(unsigned char));
-    std::cout << "img.png\n";
+    stbi_write_png(out_path.c_str(), IMG_SIZE, IMG_SIZE, 3, img.data(), 3*IMG_SIZE*sizeof(unsigned char));
+    std::println("Created {}", out_path);
 
     return 0;
 }

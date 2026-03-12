@@ -106,10 +106,9 @@ public:
         return elevation(settings, precompute, pos) <= 0;
     }
 
-    template<typename T>
-    bool any_water_in_box(const MapGenSettings& settings, const NoisePrecompute& precompute, const Box<T>& box, T sampling_distance) {
-        for (T x = box.left_top.x; x < box.right_bottom.x; x += sampling_distance) {
-            for (T y = box.left_top.y; y < box.right_bottom.y; y += sampling_distance) {
+    inline bool any_water_in_box(const MapGenSettings& settings, const NoisePrecompute& precompute, const BoxI32& box, int32_t sampling_distance) {
+        for (int32_t x = box.left_top.x; x < box.right_bottom.x; x += sampling_distance) {
+            for (int32_t y = box.left_top.y; y < box.right_bottom.y; y += sampling_distance) {
                 if (is_tile_water(settings, precompute, { (float)x, (float)y })) return true;
             }
         }
