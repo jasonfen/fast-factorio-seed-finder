@@ -237,6 +237,11 @@ int Finder<SeedCache>::run(std::string program_name, int argc, char* argv[]) {
     _run_options.first_stage_last_seed = program.get<uint32_t>("--last-seed");
     std::println("Last seed is {}.", _run_options.first_stage_last_seed);
 
+    if (_run_options.first_stage_first_seed > _run_options.first_stage_last_seed) {
+        std::println("The first seed must be less than the last seed.");
+        return 1;
+    }
+
     std::print("Precomputing noise data...");
     std::vector<NoisePrecompute> precomputes;
     for (int scale = 0; scale < _water_scales.size(); scale++) {
@@ -282,14 +287,14 @@ int Finder<SeedCache>::run(std::string program_name, int argc, char* argv[]) {
         }
 
         std::atomic<uint64_t> progress;
-        uint32_t total;
+        uint64_t total;
         if (stage_idx == 0) {
             total = ((_run_options.first_stage_last_seed - _run_options.first_stage_first_seed) / 2) * 2;
         } else {
             _previous_top_seeds = std::move(_top_seeds);
-            total = (uint32_t)_previous_top_seeds.size();
+            total = (uint64_t)_previous_top_seeds.size();
             if (check_twin_seeds) total *= 2;
-            if (check_water_settings) total *= (uint32_t)(_water_scales.size() * _water_coverages.size());
+            if (check_water_settings) total *= (uint64_t)(_water_scales.size() * _water_coverages.size());
             if (check_elevation_types) total *= 3;
         }
 

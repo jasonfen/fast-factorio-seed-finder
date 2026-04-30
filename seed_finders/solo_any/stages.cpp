@@ -28,7 +28,7 @@ constexpr std::array<PositionI32, 2> OIL_POSITIONS{
     PositionI32(10, 45),
     PositionI32(10, -45)
 };
-constexpr int32_t MAX_OIL_DISTANCE = 100;
+constexpr int32_t MAX_OIL_SPAWN_DISTANCE = 100;
 constexpr BoxI32 BASE_BOX(0, -40, MAX_EDGE_MALL_MIXER_PATCHES_DISTANCE, 70);
 
 constexpr int32_t MALL_OFFSET_SAMPLING_DISTANCE = 3;
@@ -58,7 +58,7 @@ Finder<SeedCache>::EvalResult stage1_eval(
         if (copper_score < MIN_MIXERS) continue;
 
         auto check_perpendicular = [&](Direction perpendicular) -> std::tuple<float, BoxI32, BoxI32> {
-            Direction perpendicular_rotated = perpendicular - direction;
+            Direction perpendicular_rotated = rotated_direction_counter_clockwise(perpendicular, direction);
             BoxI32 copper_bounding_box_rotated = copper_bounding_box.rotated_counter_clockwise(direction);
             int32_t copper_distance_from_spawn = copper_bounding_box_rotated.side_position(WEST);
 
@@ -174,7 +174,7 @@ Finder<SeedCache>::EvalResult stage2_eval(
                     }
                 }
 
-                if (best_oil_distance - 50 > MAX_OIL_DISTANCE) continue;
+                if (best_oil_distance - 50 > MAX_OIL_SPAWN_DISTANCE) continue;
 
                 for (const auto& tuple : MALL_BOXES) {
                     BoxI32 base_box = flipped ? std::get<BoxI32>(tuple).flipped(EAST) : std::get<BoxI32>(tuple);
@@ -272,11 +272,11 @@ Finder<SeedCache>::EvalResult stage3_eval(
     float score = (
         seed_cache->mall_score -
         COAL_WATER_DISTANCE_WEIGHT * std::abs(coal_water_distance) / MAX_COAL_WATER_DISTANCE -
-        OIL_WEIGHT * std::clamp((float)(best_oil_distance - 50) / MAX_OIL_DISTANCE, 0.f, 1.f)
+        OIL_WEIGHT * std::clamp((float)(best_oil_distance - 50) / MAX_OIL_SPAWN_DISTANCE, 0.f, 1.f)
     );
 
     return {
-        best_oil_distance - 50 > MAX_OIL_DISTANCE ||
+        best_oil_distance - 50 > MAX_OIL_SPAWN_DISTANCE ||
         coal_water_distance > MAX_COAL_WATER_DISTANCE ||
         noise.any_water_in_box(settings, precompute, seed_cache->mixer_copper_bounding_box, NOISE_SAMPLING_DISTANCE) ||
         noise.any_water_in_box(settings, precompute, seed_cache->mixer_iron_bounding_box, NOISE_SAMPLING_DISTANCE) ||

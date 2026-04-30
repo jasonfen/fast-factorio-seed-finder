@@ -58,9 +58,9 @@ constexpr ElevationType operator++(ElevationType& type, int) {
 }
 
 struct MapGenSettings {
-    std::array<float, NB_RESOURCE_TYPE> frequencies{ 1.f, 1.f, 1.f, 1.f };
-    std::array<float, NB_RESOURCE_TYPE> sizes{ 1.f, 1.f, 1.f, 1.f };
-    std::array<float, NB_RESOURCE_TYPE> richness{ 1.f, 1.f, 1.f, 1.f };
+    std::array<float, NB_RESOURCE_TYPE> frequencies{ 1.f, 1.f, 1.f, 1.f, 1.f };
+    std::array<float, NB_RESOURCE_TYPE> sizes{ 1.f, 1.f, 1.f, 1.f, 1.f };
+    std::array<float, NB_RESOURCE_TYPE> richness{ 1.f, 1.f, 1.f, 1.f, 1.f };
 
     ElevationType elevation_type = ELEVATION_2_0;
     float water_scale = 1.f;    // inverse of control:water:frequency
@@ -202,7 +202,7 @@ constexpr Direction operator++(Direction& direction, int) {
     return tmp;
 }
 
-constexpr Direction operator+(Direction& a, Direction& b) {
+constexpr Direction rotated_direction(Direction& a, Direction& b) {
     return (Direction)(((int)a + (int)b) % NB_DIRECTIONS);
 }
 
@@ -216,7 +216,7 @@ constexpr Direction operator--(Direction& direction, int) {
     return tmp;
 }
 
-constexpr Direction operator-(Direction& a, Direction& b) {
+constexpr Direction rotated_direction_counter_clockwise(Direction& a, Direction& b) {
     return (Direction)(((int)a - (int)b + (int)NB_DIRECTIONS) % NB_DIRECTIONS);
 }
 
@@ -319,12 +319,24 @@ struct Position {
         return (a - b).length();
     }
 
-    auto manhattan_length() const {
+    inline auto angle() const {
+        return std::atan2(y, x);
+    }
+
+    constexpr auto manhattan_length() const {
         return std::abs(x) + std::abs(y);
     }
 
     static constexpr auto manhattan_distance(Position a, Position b) {
         return (a - b).manhattan_length();
+    }
+
+    constexpr auto chebyshev_length() const {
+        return std::max(std::abs(x), std::abs(y));
+    }
+
+    static constexpr auto chebyshev_distance(Position a, Position b) {
+        return (a - b).chebyshev_length();
     }
 
     // direction EAST is means no rotation, south means 90 degrees clockwise
@@ -336,6 +348,31 @@ struct Position {
             case NORTH: return { y, -x };
             default: throw std::runtime_error("Invalid direction value.");
         }
+    }
+
+    // direction EAST is means no rotation, south means 90 degrees counter clockwise
+    constexpr Position rotated_counter_clockwise(Direction direction) const {
+        switch (direction) {
+            case EAST: return *this;
+            case SOUTH: return { y, -x };
+            case WEST: return { -x, -y };
+            case NORTH: return { -y, x };
+            default: throw std::runtime_error("Invalid direction value.");
+        }
+    }
+
+    constexpr Position flipped(Direction direction) const {
+        switch (direction) {
+            case EAST:
+            case WEST: return Position(x, -y);
+            case SOUTH:
+            case NORTH: return Position(-x, y);
+            default: throw std::runtime_error("Invalid direction value.");
+        }
+    }
+
+    constexpr Position flipped(Direction direction, bool is_flipped) const {
+        return is_flipped ? flipped(direction) : *this;
     }
 
     constexpr Position abs() const {
@@ -411,6 +448,10 @@ struct Box {
         return (T)std::abs((left_top.x - right_bottom.x) * (left_top.y - right_bottom.y));
     }
 
+    constexpr Position<T> size() const {
+        return Position<T>(right_bottom.x - left_top.x, right_bottom.y - left_top.y);
+    }
+
     constexpr Box rotated(Direction direction) const {
         const T x1 = left_top.x, y1 = left_top.y, x2 = right_bottom.x, y2 = right_bottom.y;
         switch (direction) {
@@ -437,7 +478,16 @@ struct Box {
         return pos.x > left_top.x && pos.y > left_top.y && pos.x < right_bottom.x && pos.y < right_bottom.y;
     }
 
-    static constexpr Box combine(Box a, Box b) {
+    constexpr Box extended(T x, T y) const {
+        Position<T> shift(x, y);
+        return Box(left_top - shift, right_bottom + shift);
+    }
+
+    constexpr Box extended(Position<T> size) const {
+        return extended(size.x, size.y);
+    }
+
+    static constexpr Box combined(Box a, Box b) {
         return Box(
             Position<T>::min(a.left_top, b.left_top),
             Position<T>::max(a.right_bottom, b.right_bottom)
@@ -453,6 +503,10 @@ struct Box {
             case NORTH: return Box(-right_bottom.x, left_top.y, -left_top.x, right_bottom.y);
             default: throw std::runtime_error("Invalid direction value.");
         }
+    }
+
+    constexpr Box flipped(Direction direction, bool is_flipped) const {
+        return is_flipped ? flipped(direction) : *this;
     }
 
     constexpr T side_position(Direction direction) const {

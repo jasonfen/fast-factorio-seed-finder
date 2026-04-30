@@ -43,6 +43,12 @@ int main(int argc, char* argv[]) {
         .default_value(std::string("2.0"))
         .metavar("STRING");
 
+    program.add_argument("--image-size")
+        .help("Size of the preview")
+        .default_value(1000)
+        .scan<'i', int>()
+        .metavar("INT");
+
     try {
         program.parse_args(argc, argv);
     }
@@ -58,11 +64,14 @@ int main(int argc, char* argv[]) {
         settings.sizes[t] = 6.f;
         settings.richness[t] = 6.f;
     }
+    settings.biter_frequency = 0.f;
+    settings.biter_size = 0.f;
 
     auto out_path = program.get<std::string>("-o");
     uint32_t seed0 = program.get<uint32_t>("--seed");
     settings.water_scale = program.get<float>("--water-scale");
     settings.water_coverage = program.get<float>("--water-coverage");
+    int img_size = program.get<int>("--image-size");
 
     std::string elevation_type_str = program.get<std::string>("--elevation-type");
     if (elevation_type_str == "2.0") {
@@ -76,7 +85,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    constexpr int IMG_SIZE = 896;
     NoisePrecompute precompute(settings);
     Noise noise(seed0, true, true);
     NoiseCache cache;
@@ -89,16 +97,16 @@ int main(int argc, char* argv[]) {
     }
 
     // Output buffer: RGB bytes
-    std::vector<unsigned char> img(IMG_SIZE * IMG_SIZE * 3, 255);
+    std::vector<unsigned char> img(img_size * img_size * 3, 255);
 
-    const int shift = IMG_SIZE / 2 ;
+    const int shift = img_size / 2 ;
 
-    for (int py = 0; py < IMG_SIZE; ++py) {
-        for (int px = 0; px < IMG_SIZE; ++px) {
+    for (int py = 0; py < img_size; ++py) {
+        for (int px = 0; px < img_size; ++px) {
             // Map pixel -> world coordinates used by generate_candidates
             float wx = (float)(px - shift);
             float wy = (float)(py - shift);
-            size_t idx = (py * IMG_SIZE + px) * 3;
+            size_t idx = (py * img_size + px) * 3;
             size_t biter_idx = ((size_t)wx + 256 + 512) / 512 + ((size_t)wy + 256 + 512) / 512 * 3;
 
             if (noise.is_tile_water(settings, precompute, { wx, wy })) {
@@ -160,7 +168,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    stbi_write_png(out_path.c_str(), IMG_SIZE, IMG_SIZE, 3, img.data(), 3*IMG_SIZE*sizeof(unsigned char));
+    stbi_write_png(out_path.c_str(), img_size, img_size, 3, img.data(), 3*img_size*sizeof(unsigned char));
     std::println("Created {}", out_path);
 
     return 0;

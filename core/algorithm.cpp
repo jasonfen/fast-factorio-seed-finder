@@ -79,7 +79,7 @@ std::pair<float, BoxI32> count_ore_lines(const PatchArray& patches, BoxI32 box, 
                 if (scaled_radius <= 22.5) continue;
 
                 count += 2.f / 7 * std::sqrt(scaled_radius*scaled_radius - 22.5f*22.5f);
-                bounding_box = BoxI32::combine(bounding_box, BoxI32(p2.pos, (int32_t)p2.radius));
+                bounding_box = BoxI32::combined(bounding_box, BoxI32(p2.pos, (int32_t)p2.radius));
             }
         }   
 
