@@ -17,6 +17,8 @@ target_compile_options(warnings_interface INTERFACE
 add_subdirectory(core)
 add_subdirectory(image_generator)
 add_subdirectory(benchmark)
+
+add_subdirectory(seed_finders/example)
 add_subdirectory(seed_finders/solo_any)
 add_subdirectory(seed_finders/botless_solo_any)
 add_subdirectory(seed_finders/mmp)
