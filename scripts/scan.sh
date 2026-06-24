@@ -22,6 +22,8 @@
 #   --threads N        Threads passed to the finder                 [default nproc]
 #   --merge-top N      Size of the merged global top list           [default 1000]
 #   --merge-only       Skip scanning; just (re)merge existing chunks
+#   -- ARGS...         Everything after -- is forwarded to the finder, e.g.
+#                      -- --finder peninsula_resources --mode railworld
 #
 set -euo pipefail
 
@@ -33,6 +35,7 @@ CHUNK=16777216
 THREADS=""
 MERGE_TOP=1000
 MERGE_ONLY=0
+EXTRA_ARGS=()   # forwarded verbatim to the finder (everything after --)
 
 die() { echo "scan.sh: $*" >&2; exit 1; }
 
@@ -46,7 +49,8 @@ while [ $# -gt 0 ]; do
         --threads)    THREADS="$2"; shift 2;;
         --merge-top)  MERGE_TOP="$2"; shift 2;;
         --merge-only) MERGE_ONLY=1; shift;;
-        -h|--help)    sed -n '2,30p' "$0"; exit 0;;
+        --)           shift; EXTRA_ARGS=("$@"); break;;
+        -h|--help)    sed -n '2,32p' "$0"; exit 0;;
         *)            die "unknown argument: $1";;
     esac
 done
@@ -110,8 +114,9 @@ while [ "$start" -lt "$LAST" ]; do
     echo "scan.sh: [$(date '+%Y-%m-%d %H:%M:%S')] chunk $name (threads=$THREADS)"
     tmp="$CHUNK_DIR/${name}.tmp.csv"
     # Write to a temp file and rename on success so a killed run never leaves a
-    # partial .csv that looks complete.
-    "$BIN" --output "$tmp" --threads "$THREADS" --first-seed "$start" --last-seed "$end"
+    # partial .csv that looks complete. EXTRA_ARGS (after --) select the finder.
+    "$BIN" --output "$tmp" --threads "$THREADS" --first-seed "$start" --last-seed "$end" \
+        ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
     mv -f "$tmp" "$csv"
     : > "$marker"
     done_chunks=$((done_chunks + 1))

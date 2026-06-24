@@ -20,7 +20,32 @@ The seed finder I made for [vanilla any%](https://github.com/ness056/fast-factor
 
 - noise.hpp: Functions to generate the map.
 - algorithm.hpp: Some useful algorithms to analyze patches.
-- finder.hpp: A pipeline that manages outfile, threads, input arguments, etc. Takes in seed evaluation functions every steps.
+- finder.hpp: A pipeline that manages outfile, threads, input arguments, etc. Takes in seed evaluation functions every steps. `Finder::run` parses the command line and runs; `Finder::execute` runs from already-parsed options (used by the unified `seed_finder` binary below so it can add its own `--finder`/`--mode` flags).
+
+## The `seed_finder` binary ##
+
+Several finders are bundled into a single executable, `seed_finder`, that picks what to look for at runtime instead of needing a separate executable per goal:
+
+- `--finder <name>` chooses the goal (the criteria / stages).
+- `--mode <preset>` chooses the map-generation settings (e.g. `normal`, `railworld`).
+- `--list` prints the available finders and modes.
+- `-o/--output`, `--threads`, `--first-seed`, `--last-seed` are the usual run options.
+
+```sh
+# see what's available
+build/seed_finders/cli/seed_finder --list
+
+# scan seeds 0..1,000,000 for peninsula spawns with good ore, rail world settings
+build/seed_finders/cli/seed_finder \
+  --finder peninsula_resources --mode railworld \
+  -o out.csv --threads 12 --first-seed 0 --last-seed 1000000
+```
+
+Bundled finders:
+- `peninsula` — spawns enclosed by water (coastline only; resources ignored). A map's coastline depends only on the seed and the water settings, so one `peninsula` run covers every mode that shares those water settings.
+- `peninsula_resources` — a peninsula spawn that also has workable ore nearby. A cheap regular-patch resource gate eliminates most seeds first, then the expensive water check runs only on the survivors.
+
+Map presets live in `seed_finders/cli/presets.cpp` (the `railworld` resource values are placeholders to verify against the in-game preset).
 
 ## Current issues/missing features ##
 
@@ -30,8 +55,33 @@ The seed finder I made for [vanilla any%](https://github.com/ness056/fast-factor
 
 ## How to create my own seed finder? ##
 
+There are two ways, depending on whether your criteria can be expressed at runtime.
+
+**Add a finder to the `seed_finder` binary (recommended).** Best when your criteria are ordinary code with a few scalar parameters, like the peninsula finders.
+- Add a module under `seed_finders/cli/finders/` that exposes an `entry()` returning a `FinderEntry` — a name, a description, and a builder lambda that wires up the stages (`finder.add_stage(...)`) and calls `finder.execute(options)`.
+- List that `entry()` in `seed_finders/cli/registry.cpp`.
+- If you need new map settings, add a preset to `seed_finders/cli/presets.cpp`.
+
+No new executable or CMake target is needed; the finder shows up under `--finder`.
+
+**Make a standalone executable.** Better when the finder relies on compile-time specialization for speed — the ore finders bake their box geometry into templates (see `evaluate_boxes` in algorithm.hpp), which can't be driven from the command line without losing that optimization.
 - Fork this repository.
 - Create a new directory in ./seed_finders/ and add that directory to the top CMakeLists.txt
 - Copy the CMakeLists.txt from the example seed finder and change the executable name.
+- Call `finder.run(name, argc, argv)` from `main`.
 
 I highly recommend to check out the [example seed finder](https://github.com/ness056/fast-factorio-seed-finder/tree/main/seed_finders/example) which looks for maps with as little ore as possible in a 1024x1024 square around spawn.
+
+## Scanning the whole seed space ##
+
+For long, unattended runs there's a chunked, resumable harness under `scripts/`:
+
+- `scripts/scan.sh` splits the seed space into fixed chunks, runs the finder on each, and records completion so a crash or reboot resumes where it left off. Finder arguments go after `--`.
+- `scripts/merge_results.py` merges the per-chunk outputs into one re-ranked global top-N list.
+
+```sh
+scripts/scan.sh --bin build/seed_finders/cli/seed_finder --out runs/normal --threads 12 \
+  -- --finder peninsula_resources --mode normal
+```
+
+See `scripts/SCANNING.md` for the full option list and for running it under systemd/launchd so it survives reboots.

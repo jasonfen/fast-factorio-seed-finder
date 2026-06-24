@@ -15,16 +15,20 @@ Build first (release):
 ./build_release.sh
 ```
 
-Then scan. Pick the binary for the mode you want:
+Then scan. There's a single `seed_finder` binary; pick the goal with `--finder`
+and the map settings with `--mode`, passed after `--`:
 
 ```sh
 scripts/scan.sh \
-  --bin build/seed_finders/peninsula_resources/peninsula_resources_normal \
+  --bin build/seed_finders/cli/seed_finder \
   --out runs/normal \
-  --threads 12
+  --threads 12 \
+  -- --finder peninsula_resources --mode normal
 ```
 
-(The exact binary path depends on your CMake generator; check under `build/`.)
+Everything after `--` is forwarded verbatim to the finder. Run
+`build/seed_finders/cli/seed_finder --list` to see the available finders and
+modes. (The exact binary path depends on your CMake generator; check `build/`.)
 
 This scans seeds `0 .. 4294967295` in chunks of `2^24`, writing:
 
@@ -61,7 +65,7 @@ A pure run touches billions of seeds. Measure real throughput on the target box
 first by timing one chunk, then extrapolate:
 
 ```sh
-time build/.../peninsula_resources_normal \
+time build/seed_finders/cli/seed_finder --finder peninsula_resources --mode normal \
   --output /tmp/bench.csv --threads 12 --first-seed 0 --last-seed 16777216
 ```
 
@@ -84,8 +88,9 @@ Type=simple
 User=YOURUSER
 WorkingDirectory=/path/to/fast-factorio-seed-finder
 ExecStart=/path/to/fast-factorio-seed-finder/scripts/scan.sh \
-  --bin /path/to/fast-factorio-seed-finder/build/seed_finders/peninsula_resources/peninsula_resources_normal \
-  --out /path/to/fast-factorio-seed-finder/runs/normal --threads 12
+  --bin /path/to/fast-factorio-seed-finder/build/seed_finders/cli/seed_finder \
+  --out /path/to/fast-factorio-seed-finder/runs/normal --threads 12 \
+  -- --finder peninsula_resources --mode normal
 Restart=always
 RestartSec=10
 Nice=10

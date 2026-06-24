@@ -1,12 +1,13 @@
-#define _USE_MATH_DEFINES
-#include "stages.hpp"
+#pragma once
 
 #include <array>
 
 #include "noise.hpp"
-#include "algorithm.hpp"
 
-namespace {
+// Shared "how enclosed by water is this spawn?" scorer, used by both the
+// peninsula and peninsula_resources finders. See detection_zones.png for the
+// ray pattern.
+namespace peninsula_detect {
 
 struct GridCell {
     int32_t x;
@@ -16,13 +17,12 @@ struct GridCell {
 
 // Marks the end of a ray (rays vary in length). No real cell uses negative
 // coordinates, so this never collides with a sampled cell.
-constexpr GridCell RAY_END{ -1, -1 };
+inline constexpr GridCell RAY_END{ -1, -1 };
 
-// One eighth of a radial detection pattern, laid out on a 32x32 grid of cells
-// (see detection_zones.png). Each ray lists the cells from the outer edge of the
-// 1024x1024 search area inward toward spawn. The pattern is reflected into the
-// other seven octants at runtime.
-constexpr std::array<std::array<GridCell, 8>, 10> RAYS = {{
+// One eighth of a radial detection pattern on a 32x32 grid of cells. Each ray
+// lists cells from the outer edge of the 1024x1024 search area inward toward
+// spawn; the pattern is reflected into the other seven octants at runtime.
+inline constexpr std::array<std::array<GridCell, 8>, 10> RAYS = {{
     {{ { 0,15}, { 0,14}, { 0,13}, { 0,12}, { 0,11}, { 0,10}, RAY_END, RAY_END }}, // red
     {{ { 2,15}, { 2,14}, { 1,13}, { 1,12}, { 1,11}, RAY_END, RAY_END, RAY_END }}, // green
     {{ { 3,15}, { 3,14}, { 2,13}, { 2,12}, { 2,11}, { 1,10}, RAY_END, RAY_END }}, // blue
@@ -35,25 +35,17 @@ constexpr std::array<std::array<GridCell, 8>, 10> RAYS = {{
     {{ {14,15}, {13,14}, {12,13}, {11,12}, {10,11}, { 9,10}, { 8, 9}, { 7, 8} }}  // dblue
 }};
 
-constexpr int32_t BOX_RADIUS = 16;        // Each grid cell is sampled as a box of this half-size (32x32 tiles).
-constexpr int32_t SAMPLING_DISTANCE = 8;  // Within a box, check one tile every this many tiles.
-constexpr int32_t CELL_SIZE = BOX_RADIUS * 2; // Cell spacing in tiles, so the boxes tile edge to edge.
+inline constexpr int32_t BOX_RADIUS = 16;             // Each cell is sampled as a 32x32 box.
+inline constexpr int32_t SAMPLING_DISTANCE = 8;       // Check one tile every 8 tiles in a box.
+inline constexpr int32_t CELL_SIZE = BOX_RADIUS * 2;  // Cell spacing so boxes tile edge to edge.
+inline constexpr int RAY_COUNT = (int)RAYS.size();
+inline constexpr int OCTANTS = 8;
 
-constexpr int RAY_COUNT = (int)RAYS.size();
-constexpr int OCTANTS = 8;
-
-} // namespace
-
-// Scores how enclosed by water a spawn is. For each of RAY_COUNT * OCTANTS radial
-// directions, walk from the outer edge inward and award a point at the first cell
-// containing water. A higher score means more directions are blocked by water,
-// i.e. a more peninsula-like spawn. Max score is RAY_COUNT * OCTANTS (= 80).
-Finder<>::EvalResult stage1_eval(
-    const MapGenSettings& settings, const NoisePrecompute& precompute, NoiseCache&, uint32_t seed, void*
-) {
-    Noise noise(seed, true, settings.elevation_type == ELEVATION_2_0);
-
-    float score = 0.f;
+// Score in [0, RAY_COUNT * OCTANTS] (= 80). For each radial direction, walk
+// outward-to-inward and award a point at the first cell containing water. Higher
+// means more directions are blocked by water, i.e. a more peninsula-like spawn.
+inline float score(Noise& noise, const MapGenSettings& settings, const NoisePrecompute& precompute) {
+    float total = 0.f;
     for (int octant = 0; octant < OCTANTS; octant++) {
         // Reflect the eighth-circle pattern into this octant: optionally swap
         // x/y and flip each axis sign (the three low bits of octant).
@@ -71,12 +63,13 @@ Finder<>::EvalResult stage1_eval(
                                       (negate_y ? -gy : gy) * CELL_SIZE);
 
                 if (noise.any_water_in_box(settings, precompute, BoxI32(pos, BOX_RADIUS), SAMPLING_DISTANCE)) {
-                    score++;
+                    total++;
                     break; // The first water cell along this ray is enough.
                 }
             }
         }
     }
-
-    return { .eliminate = false, .score = score };
+    return total;
 }
+
+} // namespace peninsula_detect

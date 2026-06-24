@@ -12,6 +12,50 @@
 #include <chrono>
 #include "noise.hpp"
 
+// Standard command-line options shared by every finder. Defined here so the
+// convenience Finder::run() and a unified multi-finder binary can both build the
+// same parser and hand the parsed values to Finder::execute().
+struct StandardOptions {
+    std::string output;
+    int threads = 1;
+    uint32_t first_seed = 0;
+    uint32_t last_seed = SEED_MAX;
+};
+
+inline void add_standard_arguments(argparse::ArgumentParser& program) {
+    program.add_argument("-o", "--output")
+        .help("The path to the output file.")
+        .required()
+        .metavar("PATH");
+
+    program.add_argument("--threads")
+        .help("Number of threads to use.")
+        .default_value(1)
+        .scan<'i', int>()
+        .metavar("INT");
+
+    program.add_argument("--first-seed")
+        .help("The first seed to be scanned by the first stage. Must be an even number.")
+        .default_value(0u)
+        .scan<'i', uint32_t>()
+        .metavar("UINT32");
+
+    program.add_argument("--last-seed")
+        .help("The last seed to be scanned by the first stage.")
+        .default_value(SEED_MAX)
+        .scan<'i', uint32_t>()
+        .metavar("UINT32");
+}
+
+inline StandardOptions read_standard_arguments(const argparse::ArgumentParser& program) {
+    return StandardOptions{
+        .output = program.get<std::string>("-o"),
+        .threads = program.get<int>("--threads"),
+        .first_seed = program.get<uint32_t>("--first-seed"),
+        .last_seed = program.get<uint32_t>("--last-seed"),
+    };
+}
+
 template<typename SeedCache>
 struct Seed {
     uint32_t seed;
@@ -153,7 +197,11 @@ public:
         );
     }
 
+    // Convenience entry point: build the standard parser, parse argv, and run.
     int run(std::string program_name, int argc, char* argv[]);
+    // Run with already-parsed options. Used by the unified multi-finder binary,
+    // which owns its own parser (so it can add --finder/--mode).
+    int execute(const StandardOptions& options);
 
 private:
     struct Stage {
@@ -192,35 +240,8 @@ private:
 
 template<typename SeedCache>
 int Finder<SeedCache>::run(std::string program_name, int argc, char* argv[]) {
-    if (_stages.size() == 0) {
-        std::cerr << "At least one stage must be added before calling Finder::run." << std::endl;
-        return 1;
-    }
-
     argparse::ArgumentParser program(program_name);
-
-    program.add_argument("-o", "--output")
-        .help("The path to the output file.")
-        .required()
-        .metavar("PATH");
-
-    program.add_argument("--threads")
-        .help("Number of threads to use.")
-        .default_value(1)
-        .scan<'i', int>()
-        .metavar("INT");
-
-    program.add_argument("--first-seed")
-        .help("The first seed to be scanned by the first stage. Must be an even number.")
-        .default_value(0u)
-        .scan<'i', uint32_t>()
-        .metavar("UINT32");
-
-    program.add_argument("--last-seed")
-        .help("The last seed to be scanned by the first stage.")
-        .default_value(SEED_MAX)
-        .scan<'i', uint32_t>()
-        .metavar("UINT32");
+    add_standard_arguments(program);
 
     try {
         program.parse_args(argc, argv);
@@ -231,21 +252,31 @@ int Finder<SeedCache>::run(std::string program_name, int argc, char* argv[]) {
         return 1;
     }
 
-    auto out_path = program.get<std::string>("-o");
+    return execute(read_standard_arguments(program));
+}
 
-    _run_options.threads = program.get<int>("--threads");
+template<typename SeedCache>
+int Finder<SeedCache>::execute(const StandardOptions& options) {
+    if (_stages.size() == 0) {
+        std::cerr << "At least one stage must be added before calling Finder::execute." << std::endl;
+        return 1;
+    }
+
+    _run_options.threads = options.threads;
     std::println("Threads count set to {}.", _run_options.threads);
 
-    _run_options.first_stage_first_seed = program.get<uint32_t>("--first-seed");
+    _run_options.first_stage_first_seed = options.first_seed;
     std::println("First seed is {}.", _run_options.first_stage_first_seed);
 
-    _run_options.first_stage_last_seed = program.get<uint32_t>("--last-seed");
+    _run_options.first_stage_last_seed = options.last_seed;
     std::println("Last seed is {}.", _run_options.first_stage_last_seed);
 
     if (_run_options.first_stage_first_seed > _run_options.first_stage_last_seed) {
         std::println("The first seed must be less than the last seed.");
         return 1;
     }
+
+    const std::string& out_path = options.output;
 
     std::print("Precomputing noise data...");
     std::vector<NoisePrecompute> precomputes;
