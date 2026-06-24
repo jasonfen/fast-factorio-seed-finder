@@ -1,0 +1,73 @@
+name: Build
+
+# Compile the whole project on Linux, Apple Silicon, and Windows.
+#
+# The code uses C++23 std::print (core/finder.hpp etc.), which needs a recent
+# standard library: libstdc++ 14+, MSVC 17.9+, or libc++ 18+. GitHub's default
+# Apple Clang and Ubuntu GCC are too old, so we install GCC 14 on Linux/macOS and
+# use MSVC on Windows. The project also requires CMake >= 3.30 (newer than
+# Ubuntu's apt cmake), so we pull a recent CMake + Ninja via get-cmake.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux (gcc-14)
+            os: ubuntu-latest
+            cc: gcc-14
+            cxx: g++-14
+            generator: Ninja
+          - name: macOS arm64 (gcc-14)
+            os: macos-14
+            cc: gcc-14
+            cxx: g++-14
+            generator: Ninja
+          - name: Windows (MSVC)
+            os: windows-latest
+            generator: Visual Studio 17 2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install GCC 14 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-14
+
+      - name: Install GCC 14 (macOS)
+        if: runner.os == 'macOS'
+        run: brew install gcc@14
+
+      - name: Set up CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Configure (Ninja)
+        if: matrix.generator == 'Ninja'
+        run: >
+          cmake -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER=${{ matrix.cc }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+
+      - name: Configure (Visual Studio)
+        if: runner.os == 'Windows'
+        run: cmake -B build -G "${{ matrix.generator }}" -A x64
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
