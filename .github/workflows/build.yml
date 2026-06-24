@@ -7,6 +7,10 @@ name: Build
 # Apple Clang and Ubuntu GCC are too old, so we install GCC 14 on Linux/macOS and
 # use MSVC on Windows. The project also requires CMake >= 3.30 (newer than
 # Ubuntu's apt cmake), so we pull a recent CMake + Ninja via get-cmake.
+#
+# All three platforms build with Ninja. On Windows we set up the MSVC environment
+# with msvc-dev-cmd and compile with cl, which avoids the Visual Studio generator
+# failing to locate an instance under the get-cmake CMake.
 
 on:
   push:
@@ -30,15 +34,14 @@ jobs:
             os: ubuntu-latest
             cc: gcc-14
             cxx: g++-14
-            generator: Ninja
           - name: macOS arm64 (gcc-14)
             os: macos-14
             cc: gcc-14
             cxx: g++-14
-            generator: Ninja
           - name: Windows (MSVC)
             os: windows-latest
-            generator: Visual Studio 17 2022
+            cc: cl
+            cxx: cl
 
     steps:
       - name: Checkout
@@ -54,20 +57,21 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install gcc@14
 
+      - name: Set up MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Set up CMake and Ninja
         uses: lukka/get-cmake@latest
 
-      - name: Configure (Ninja)
-        if: matrix.generator == 'Ninja'
+      - name: Configure
         run: >
           cmake -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_C_COMPILER=${{ matrix.cc }}
           -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
 
-      - name: Configure (Visual Studio)
-        if: runner.os == 'Windows'
-        run: cmake -B build -G "${{ matrix.generator }}" -A x64
-
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --parallel
